@@ -38,12 +38,14 @@ done
 
 echo "Updating shunt-local..."
 
-# 1. Optionally pull git updates if inside a git repo with a remote
+# 1. Fetch and pull latest changes from remote repository (GitHub)
 if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if git -C "$REPO_DIR" remote | grep -q 'origin'; then
-      echo "Pulling latest changes from git..."
-      git -C "$REPO_DIR" pull --ff-only || echo "Warning: git pull failed or has conflicts; continuing with local files."
+      current_branch=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+      echo "Fetching and pulling latest changes from remote repository (origin/${current_branch})..."
+      git -C "$REPO_DIR" fetch origin "$current_branch"
+      git -C "$REPO_DIR" pull --ff-only origin "$current_branch" || echo "Warning: git pull was not fast-forwarded or local changes exist. Continuing with current repository files."
     fi
   fi
 fi
