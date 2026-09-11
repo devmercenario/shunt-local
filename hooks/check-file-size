@@ -2,7 +2,7 @@
 # Block full-file reads on large files, redirect to /bulk-reader skill
 # Compatible with both Google Antigravity (view_file) and Claude Code (Read)
 
-HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOK_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
   . "$HOOK_DIR/../scripts/lib/local-llm.sh"
 fi

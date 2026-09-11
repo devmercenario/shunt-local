@@ -9,10 +9,12 @@ Delegate boilerplate code generation to your local LLM (e.g. Qwen 3.8 / llama.cp
 
 ```bash
 # Generate and write directly to target file
-${CLAUDE_PLUGIN_ROOT}/scripts/code-write --spec "<what to generate>" --reference <reference-file> --target <output-path>
+code-write --spec "<what to generate>" --reference <reference-file> --target <output-path>
 
 # Output to stdout instead (omit --target)
-${CLAUDE_PLUGIN_ROOT}/scripts/code-write --spec "<what to generate>" --reference <reference-file>
+code-write --spec "<what to generate>" --reference <reference-file>
+
+# (Or in Claude Code: ${CLAUDE_PLUGIN_ROOT}/scripts/code-write)
 ```
 
 ## Guidelines

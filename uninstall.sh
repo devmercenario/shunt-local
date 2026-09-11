@@ -7,11 +7,17 @@ SKILLS_DIR="${HOME}/.agents/skills"
 GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
 HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
 
+BIN_DIR="${HOME}/.local/bin"
+
 echo "Uninstalling shunt-local..."
 
-# 1. Remove skills symlinks
-rm -f "$SKILLS_DIR/bulk-reader" "$SKILLS_DIR/code-writer"
-echo "Removed skill symlinks from $SKILLS_DIR"
+# 1. Remove binaries
+rm -f "$BIN_DIR/bulk-read" "$BIN_DIR/code-write" "$BIN_DIR/shunt-update"
+echo "Removed binaries from $BIN_DIR"
+
+# 2. Remove skills
+rm -rf "$SKILLS_DIR/bulk-reader" "$SKILLS_DIR/code-writer"
+echo "Removed skills from $SKILLS_DIR"
 
 # 2. Unregister from agy plugin if present
 if command -v agy >/dev/null 2>&1; then

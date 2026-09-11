@@ -8,7 +8,8 @@ description: "Delegate bulk file reading to a local LLM. Use when you need to re
 Delegate file reading and analysis to your local LLM (e.g. Qwen 3.8 / llama.cpp / Ollama) to save tokens in the main agent context.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/bulk-read --question "<question>" --paths <file1> [<file2> ...]
+bulk-read --question "<question>" --paths <file1> [<file2> ...]
+# (Or in Claude Code: ${CLAUDE_PLUGIN_ROOT}/scripts/bulk-read)
 ```
 
 ## Guidelines

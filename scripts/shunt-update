@@ -1,0 +1,128 @@
+#!/bin/bash
+# Updater script for shunt-local (Google Antigravity & Claude Code)
+# Updates hooks, skills, and binaries from the repository.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+SKILLS_DIR="${HOME}/.agents/skills"
+BIN_DIR="${HOME}/.local/bin"
+GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
+HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
+TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
+
+DO_PULL=true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-pull)
+      DO_PULL=false
+      shift
+      ;;
+    --pull)
+      DO_PULL=true
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: shunt-update [--pull | --no-pull]"
+      echo "Updates shunt-local hooks, skills, and binaries."
+      exit 0
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+echo "Updating shunt-local..."
+
+# 1. Optionally pull git updates if inside a git repo with a remote
+if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
+  if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if git -C "$REPO_DIR" remote | grep -q 'origin'; then
+      echo "Pulling latest changes from git..."
+      git -C "$REPO_DIR" pull --ff-only || echo "Warning: git pull failed or has conflicts; continuing with local files."
+    fi
+  fi
+fi
+
+# 2. Update binaries in ~/.local/bin
+mkdir -p "$BIN_DIR"
+for bin_script in bulk-read code-write shunt-update; do
+  target="$REPO_DIR/scripts/$bin_script"
+  if [ -f "$target" ]; then
+    chmod +x "$target"
+    ln -sf "$target" "$BIN_DIR/$bin_script"
+    echo "Linked binary '$bin_script' -> $BIN_DIR/$bin_script"
+  fi
+done
+
+# 3. Update skills in ~/.agents/skills (copy to keep realpath inside ~/.agents/)
+mkdir -p "$SKILLS_DIR"
+for skill in "$REPO_DIR"/skills/*; do
+  if [ -d "$skill" ]; then
+    skill_name="$(basename "$skill")"
+    rm -rf "$SKILLS_DIR/$skill_name"
+    cp -r "$skill" "$SKILLS_DIR/$skill_name"
+    echo "Updated skill '$skill_name' in $SKILLS_DIR/$skill_name"
+  fi
+done
+
+# 4. Ensure repository is trusted in Antigravity ~/.gemini/trustedFolders.json
+if [ -d "${HOME}/.gemini" ] && command -v jq >/dev/null 2>&1; then
+  if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
+    echo "{}" > "$TRUSTED_FOLDERS_FILE"
+  fi
+  tmp_tf=$(mktemp)
+  jq --arg dir "$REPO_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
+  echo "Ensured $REPO_DIR is trusted in $TRUSTED_FOLDERS_FILE"
+fi
+
+# 5. Register/update PreToolUse lifecycle hooks in ~/.gemini/config/hooks.json
+if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
+  mkdir -p "$GEMINI_CONFIG_DIR"
+  if [ ! -f "$HOOKS_FILE" ]; then
+    echo "{}" > "$HOOKS_FILE"
+  fi
+
+  tmp_hooks=$(mktemp)
+  jq \
+    --arg size_hook "$REPO_DIR/hooks/check-file-size" \
+    --arg bash_hook "$REPO_DIR/hooks/check-bash-read" \
+    '. + {
+      "shunt-local": {
+        "PreToolUse": [
+          {
+            "matcher": "view_file",
+            "hooks": [
+              {
+                "type": "command",
+                "command": $size_hook
+              }
+            ]
+          },
+          {
+            "matcher": "run_command",
+            "hooks": [
+              {
+                "type": "command",
+                "command": $bash_hook
+              }
+            ]
+          }
+        ]
+      }
+    }' "$HOOKS_FILE" > "$tmp_hooks" && mv "$tmp_hooks" "$HOOKS_FILE"
+  echo "Updated PreToolUse hooks in $HOOKS_FILE"
+fi
+
+# 6. Re-register with Antigravity CLI (agy) if present
+if command -v agy >/dev/null 2>&1; then
+  agy plugin install "$REPO_DIR" 2>/dev/null || true
+  echo "Re-registered plugin with agy"
+fi
+
+echo ""
+echo "shunt-local update complete!"
