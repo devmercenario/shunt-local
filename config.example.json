@@ -1,6 +1,6 @@
 {
   "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
-  "model": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
   "temperature": 0.2,
   "min_lines": 350,
   "timeout_seconds": 180,

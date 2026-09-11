@@ -4,7 +4,7 @@
 
 # Default settings
 DEFAULT_ENDPOINT="http://127.0.0.1:8080/v1/chat/completions"
-DEFAULT_MODEL="empero-ai/Qwen3.8-9B-Distill-GGUF"
+DEFAULT_MODEL="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
 DEFAULT_TEMPERATURE="0.2"
 DEFAULT_MIN_LINES=350
 DEFAULT_TIMEOUT_SECONDS=180
