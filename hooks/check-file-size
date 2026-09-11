@@ -44,4 +44,10 @@ if [ "$lines" -le "$MIN_LINES" ]; then
   exit 0
 fi
 
+# If local LLM server is offline, fail-open to cloud model
+if ! shunt_is_online; then
+  echo '{"decision": "allow"}'
+  exit 0
+fi
+
 echo "{\"decision\": \"${block_decision}\", \"reason\": \"File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of reading it directly. If you need exact content for editing, re-read with a line range for just the section you need.\"}"

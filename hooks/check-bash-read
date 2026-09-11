@@ -46,8 +46,15 @@ fi
 [ ! -f "$file_path" ] && { echo '{"decision": "allow"}'; exit 0; }
 
 lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "$lines" -gt "$MIN_LINES" ]; then
-  echo "{\"decision\": \"${block_decision}\", \"reason\": \"File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of cat/head/tail.\"}"
-else
+if [ "$lines" -le "$MIN_LINES" ]; then
   echo '{"decision": "allow"}'
+  exit 0
 fi
+
+# If local LLM server is offline, fail-open to cloud model
+if ! shunt_is_online; then
+  echo '{"decision": "allow"}'
+  exit 0
+fi
+
+echo "{\"decision\": \"${block_decision}\", \"reason\": \"File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of cat/head/tail.\"}"

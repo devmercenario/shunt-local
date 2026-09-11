@@ -69,6 +69,19 @@ shunt_preflight() {
   return 0
 }
 
+shunt_is_online() {
+  local base="${SHUNT_ENDPOINT%/}"
+  local health_url
+  if [[ "$base" == */v1/chat/completions ]]; then
+    health_url="${base%/v1/chat/completions}/v1/models"
+  else
+    health_url="$base"
+  fi
+  local auth_header=()
+  [ -n "${SHUNT_API_KEY:-}" ] && auth_header=(-H "Authorization: Bearer $SHUNT_API_KEY")
+  curl -s -S --connect-timeout 0.1 -m 0.3 "${auth_header[@]}" "$health_url" >/dev/null 2>&1
+}
+
 shunt_report_error() {
   local label="$1" response="$2"
   local message
