@@ -1,0 +1,20 @@
+{
+  "name": "shunt-local",
+  "displayName": "Shunt Local",
+  "version": "0.1.0",
+  "description": "Shunts large file reads and boilerplate generation to local LLMs (llama.cpp, Ollama, vLLM) to save up to 90%+ tokens.",
+  "author": {
+    "name": "Open Source Community"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "tokens",
+    "local-llm",
+    "llama-cpp",
+    "qwen",
+    "delegation",
+    "optimization"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

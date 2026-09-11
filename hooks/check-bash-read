@@ -1,0 +1,53 @@
+#!/bin/bash
+# Block Bash commands that read large files, redirect to /bulk-reader skill
+# Compatible with both Google Antigravity (run_command) and Claude Code (Bash)
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
+  . "$HOOK_DIR/../scripts/lib/local-llm.sh"
+fi
+
+MIN_LINES="${SHUNT_MIN_LINES:-350}"
+case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
+
+input=$(cat)
+
+# Extract command from Antigravity (toolCall) or Claude Code (tool_input)
+command=$(echo "$input" | jq -r '.toolCall.args.CommandLine // .tool_input.command // empty')
+[ -z "$command" ] && { echo '{"decision": "allow"}'; exit 0; }
+
+# Detect agent host format
+is_antigravity=$(echo "$input" | jq -r 'has("toolCall")')
+if [ "$is_antigravity" = "true" ]; then
+  block_decision="deny"
+else
+  block_decision="block"
+fi
+
+# Skip piped commands (cat file | grep) — those are targeted reads
+echo "$command" | grep -qE '\|' && { echo '{"decision": "allow"}'; exit 0; }
+
+# Skip redirections (cat file > out) — not a read-into-context operation
+echo "$command" | grep -qE '>' && { echo '{"decision": "allow"}'; exit 0; }
+
+# Extract file path from read commands, stripping flags (e.g. cat -n, head -100)
+file_path=""
+if echo "$command" | grep -qE '^(cat|head|tail|less|more) '; then
+  args=$(echo "$command" | sed -E 's/^(cat|head|tail|less|more) +//')
+  for arg in $args; do
+    case "$arg" in
+      -*) continue ;;
+      *)  file_path=$(echo "$arg" | tr -d '"'"'"); break ;;
+    esac
+  done
+fi
+
+[ -z "$file_path" ] && { echo '{"decision": "allow"}'; exit 0; }
+[ ! -f "$file_path" ] && { echo '{"decision": "allow"}'; exit 0; }
+
+lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$lines" -gt "$MIN_LINES" ]; then
+  echo "{\"decision\": \"${block_decision}\", \"reason\": \"File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of cat/head/tail.\"}"
+else
+  echo '{"decision": "allow"}'
+fi

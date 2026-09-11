@@ -1,0 +1,5 @@
+.fixtures
+*.tmp
+*.log
+shunt.config.json
+.DS_Store
