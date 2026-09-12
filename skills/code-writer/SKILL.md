@@ -5,7 +5,7 @@ description: "Delegate boilerplate code generation to a local LLM. Use for tests
 
 # Code Writer (Local LLM)
 
-Delegate boilerplate code generation to your local LLM (e.g. Qwen 3.8 / llama.cpp / Ollama) to save tokens and avoid clogging your context.
+Delegate boilerplate code generation to your local LLM (e.g. Qwen 2.5 Coder / llama.cpp / Ollama) to save tokens and avoid clogging your context.
 
 ```bash
 # Generate and write directly to target file

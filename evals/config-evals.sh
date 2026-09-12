@@ -30,7 +30,7 @@ check() {
 )
 IFS='|' read -r ep mod tmp lns < "$WORKDIR/res1"
 check "default-endpoint" "http://127.0.0.1:8080/v1/chat/completions" "$ep" "fallback to default endpoint"
-check "default-model" "empero-ai/Qwen3.8-9B-Distill-GGUF" "$mod" "fallback to default model"
+check "default-model" "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" "$mod" "fallback to default model"
 check "default-temp" "0.2" "$tmp" "fallback to default temperature"
 check "default-lines" "350" "$lns" "fallback to default min lines"
 

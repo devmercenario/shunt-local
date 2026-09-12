@@ -59,7 +59,7 @@ This establishes a true **Hybrid Intelligence Pipeline**:
                                       │
        ┌──────────────────────────────▼───────────────────────────────┐
        │             THE WORKHORSE (Local GPU / Hardware LLM)         │
-       │            Qwen 2.5 Coder / Qwen 3.8 / Gemma / Llama          │
+       │            Qwen 2.5 Coder (7B / 14B) / Gemma / Llama         │
        │                                                              │
        │  • Zero-Cost, Zero-Latency Bulk File Ingestion               │
        │  • AST / Function / Schema Extraction                        │
@@ -174,7 +174,7 @@ To remove `shunt-local` and restore your previous configuration at any time:
 ```json
 {
   "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
-  "model": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
   "temperature": 0.2,
   "min_lines": 350,
   "timeout_seconds": 180,
@@ -187,7 +187,7 @@ To remove `shunt-local` and restore your previous configuration at any time:
 | Option | Env Variable | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `endpoint` | `SHUNT_ENDPOINT` | `http://127.0.0.1:8080/v1/chat/completions` | Local inference server URL |
-| `model` | `SHUNT_MODEL` | `empero-ai/Qwen3.8-9B-Distill-GGUF` | Model identifier passed to local server |
+| `model` | `SHUNT_MODEL` | `Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` | Model identifier passed to local server |
 | `temperature` | `SHUNT_TEMPERATURE`| `0.2` | Sampling temperature (low for deterministic code analysis) |
 | `min_lines` | `SHUNT_MIN_LINES` | `350` | File line threshold before blocking direct reads |
 | `timeout_seconds` | `SHUNT_TIMEOUT_SECONDS` | `180` | Max duration before timing out local inference |
@@ -197,14 +197,40 @@ To remove `shunt-local` and restore your previous configuration at any time:
 
 ## 🖥️ Recommended Local Models & Server Setup
 
+The primary recommended model family for `shunt-local` is **`Qwen/Qwen2.5-Coder-7B-Instruct-GGUF`**.
+
+### 💡 Why Non-Reasoning (No-CoT) Models are Critical for Shunting
+
+Unlike general conversational chat or math puzzle solving, file shunting (`bulk-reader` and `code-writer`) requires **structural code comprehension, AST extraction, and fast templating**:
+
+1. **Zero Discarded Thinking Overhead**: Reasoning models (DeepSeek-R1, Qwen 3.8 Distill, etc.) generate 300–700 internal `<think>` tokens per request. In shunting, these reasoning tokens are stripped away before returning to the agent, meaning **70%–85% of GPU computation time is wasted generating discarded text**.
+2. **Sub-Second Latency**: A non-reasoning coder model starts streaming useful tokens in ~15–20 ms. For targeted questions, it responds in **< 1 second**, whereas a reasoning model forces a 6–10 second delay on every single tool call while it formulates its internal monologue.
+3. **Strict Formatting Compliance**: Instruction-tuned coder models strictly adhere to system prompts ("Output structured bullets only, no preambles"), ensuring clean, machine-parsable summaries.
+
+### Quantization Sizing Guidelines:
+
+| Hardware VRAM | Recommended Quantization | Model File | Generation Speed | VRAM Allocation |
+|---|---|---|---|---|
+| **≤ 16 GB VRAM** (RTX 5060 Ti, 4060 Ti, 3060, Apple Silicon 16GB) | **`Q4_K_M`** (Recommended) | `qwen2.5-coder-7b-instruct-q4_k_m.gguf` (~4.3 GB) | **~65–80 tokens/s** | ~6.5 GB (leaves 10 GB free for 32k KV cache) |
+| **> 16 GB VRAM** (RTX 3090, 4090, Apple Silicon 32GB+) | **`Q8_0`** | `qwen2.5-coder-7b-instruct-q8_0.gguf` (~8.1 GB) | **~45–50 tokens/s** | ~9.6 GB (full 8-bit uncompressed precision) |
+
+---
+
 ### Option 1: `llama.cpp` (`llama-server`) — Recommended for Maximum Performance
 
-For an NVIDIA RTX GPU (RTX 3060, 4070, 5060 Ti, etc.) or Apple Silicon:
-
 ```bash
-# High-speed reasoning & coding model (fits in 8-16 GB VRAM)
+# For GPUs with <= 16 GB VRAM (RTX 5060 Ti / 4060 Ti / 3060 / Apple Silicon 16GB):
 llama-server \
-  -hf empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
+  -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M \
+  --port 8080 \
+  -ngl 99 \
+  -c 32768 \
+  --flash-attn \
+  --temp 0.2
+
+# For systems with > 16 GB VRAM (RTX 3090 / 4090 / Apple Silicon 32GB+):
+llama-server \
+  -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0 \
   --port 8080 \
   -ngl 99 \
   -c 32768 \
@@ -216,13 +242,13 @@ llama-server \
 
 ```bash
 # Pull model
-ollama run qwen2.5-coder:14b
+ollama run qwen2.5-coder:7b
 ```
 Update `~/.config/shunt-local/config.json`:
 ```json
 {
   "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
-  "model": "qwen2.5-coder:14b"
+  "model": "qwen2.5-coder:7b"
 }
 ```
 

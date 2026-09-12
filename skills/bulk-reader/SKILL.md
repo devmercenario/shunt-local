@@ -5,7 +5,7 @@ description: "Delegate bulk file reading to a local LLM. Use when you need to re
 
 # Bulk Reader (Local LLM)
 
-Delegate file reading and analysis to your local LLM (e.g. Qwen 3.8 / llama.cpp / Ollama) to save tokens in the main agent context.
+Delegate file reading and analysis to your local LLM (e.g. Qwen 2.5 Coder / llama.cpp / Ollama) to save tokens in the main agent context.
 
 ```bash
 bulk-read --question "<question>" --paths <file1> [<file2> ...]
