@@ -1,0 +1,425 @@
+#!/bin/bash
+# Autonomous Subtask Worker for shunt-local
+# Executes micro-tasks locally using Qwen2.5-Coder on llama-server with self-correction loop.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+. "$SCRIPT_DIR/lib/local-llm.sh"
+
+task_id=""
+title=""
+instruction=""
+target_files=()
+read_files=()
+verification_command=""
+rollback_command=""
+max_retries=3
+output_mode="auto"
+spec_json=""
+spec_file=""
+
+usage() {
+  cat << 'EOF'
+Usage: shunt-local exec [options]
+
+Options:
+  --instruction <text>         Task instruction / requirements
+  --files, --target-files <f>  Target file(s) to modify or create (comma or space separated)
+  --read-files, --reference <f> Reference file(s) for context (comma or space separated)
+  --test-cmd, --verification-command <cmd> Command to verify correctness (exit 0 = pass)
+  --rollback-cmd <cmd>         Command to undo changes if retries are exhausted
+  --max-retries <n>            Maximum auto-correction retry attempts (default: 3)
+  --task-id <id>               Optional identifier for this subtask
+  --title <text>               Optional human-readable title
+  --spec '<json>'              Full TaskContract JSON string
+  --spec-file <file>           Path to TaskContract JSON/YAML file
+  -h, --help                   Show this help message
+
+Examples:
+  shunt-local exec \
+    --instruction "Implement validateToken method in auth service" \
+    --files "src/auth/jwt.ts" \
+    --read-files "src/auth/types.ts" \
+    --test-cmd "npm test -- tests/auth.test.ts" \
+    --max-retries 3
+EOF
+}
+
+# 1. Parse CLI arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --instruction) instruction="$2"; shift 2 ;;
+    --files|--target-files)
+      IFS=',' read -ra ADDR <<< "$2"
+      for f in "${ADDR[@]}"; do
+        # Trim leading/trailing whitespace
+        f=$(echo "$f" | xargs)
+        [ -n "$f" ] && target_files+=("$f")
+      done
+      shift 2
+      ;;
+    --read-files|--reference)
+      IFS=',' read -ra ADDR <<< "$2"
+      for f in "${ADDR[@]}"; do
+        f=$(echo "$f" | xargs)
+        [ -n "$f" ] && read_files+=("$f")
+      done
+      shift 2
+      ;;
+    --test-cmd|--verification-command) verification_command="$2"; shift 2 ;;
+    --rollback-cmd) rollback_command="$2"; shift 2 ;;
+    --max-retries) max_retries="$2"; shift 2 ;;
+    --task-id) task_id="$2"; shift 2 ;;
+    --title) title="$2"; shift 2 ;;
+    --output-mode) output_mode="$2"; shift 2 ;;
+    --spec) spec_json="$2"; shift 2 ;;
+    --spec-file) spec_file="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# 2. Parse spec if provided (Capability A: Structured Input Spec)
+if [ -n "$spec_file" ] && [ -f "$spec_file" ]; then
+  spec_json=$(cat "$spec_file")
+fi
+
+if [ -n "$spec_json" ]; then
+  parsed_inst=$(echo "$spec_json" | jq -r '.instruction // empty')
+  parsed_tid=$(echo "$spec_json" | jq -r '.task_id // empty')
+  parsed_title=$(echo "$spec_json" | jq -r '.title // empty')
+  parsed_vcmd=$(echo "$spec_json" | jq -r '.verification_command // .test_cmd // empty')
+  parsed_rcmd=$(echo "$spec_json" | jq -r '.rollback_command // .rollback_cmd // empty')
+  parsed_retries=$(echo "$spec_json" | jq -r '.max_retries // empty')
+  parsed_mode=$(echo "$spec_json" | jq -r '.output_mode // empty')
+
+  [ -n "$parsed_inst" ] && instruction="$parsed_inst"
+  [ -n "$parsed_tid" ] && task_id="$parsed_tid"
+  [ -n "$parsed_title" ] && title="$parsed_title"
+  [ -n "$parsed_vcmd" ] && verification_command="$parsed_vcmd"
+  [ -n "$parsed_rcmd" ] && rollback_command="$parsed_rcmd"
+  [ -n "$parsed_retries" ] && max_retries="$parsed_retries"
+  [ -n "$parsed_mode" ] && output_mode="$parsed_mode"
+
+  while IFS= read -r f; do
+    [ -n "$f" ] && target_files+=("$f")
+  done < <(echo "$spec_json" | jq -r '(.target_files // .files // [])[]? // empty')
+
+  while IFS= read -r f; do
+    [ -n "$f" ] && read_files+=("$f")
+  done < <(echo "$spec_json" | jq -r '(.read_files // .reference_files // [])[]? // empty')
+fi
+
+# Validation
+if [ -z "$instruction" ]; then
+  echo '{"status": "error", "error": "Missing required field: --instruction"}' >&2
+  exit 1
+fi
+
+if [ ${#target_files[@]} -eq 0 ]; then
+  echo '{"status": "error", "error": "Missing required field: --files / --target-files"}' >&2
+  exit 1
+fi
+
+[ -z "$task_id" ] && task_id="task-$(date +%s)"
+
+# 3. Preflight checks
+if ! shunt_is_enabled; then
+  cat << JSON
+{
+  "status": "error",
+  "task_id": "$task_id",
+  "error": "shunt-local is currently disabled via Master Switch. Enable it using 'shunt-local on'."
+}
+JSON
+  exit 1
+fi
+
+if ! shunt_is_online; then
+  cat << JSON
+{
+  "status": "error",
+  "task_id": "$task_id",
+  "error": "Local LLM server is unreachable at $SHUNT_ENDPOINT. Ensure llama-server / Ollama is running."
+}
+JSON
+  exit 1
+fi
+
+shunt_preflight || exit 1
+
+# 4. Capability B: Lean Context Packer
+shunt_tmpfile context_file || exit 1
+
+cat << 'PROMPT_HEADER' > "$context_file"
+### TASK INSTRUCTION
+PROMPT_HEADER
+echo "$instruction" >> "$context_file"
+echo "" >> "$context_file"
+
+# Add reference files
+if [ ${#read_files[@]} -gt 0 ]; then
+  echo "### REFERENCE CONTEXT FILES" >> "$context_file"
+  for rf in "${read_files[@]}"; do
+    if [ -f "$rf" ]; then
+      echo "=== Reference File: $rf ===" >> "$context_file"
+      cat -- "$rf" >> "$context_file"
+      echo "" >> "$context_file"
+    else
+      echo "=== Reference File: $rf (Not found on disk) ===" >> "$context_file"
+    fi
+  done
+fi
+
+# Auto-detect test file in verification_command if not explicitly added
+if [ -n "$verification_command" ]; then
+  for word in $verification_command; do
+    if [[ "$word" =~ \.(test|spec)\.[a-zA-Z0-9]+$ ]] || [[ "$word" =~ test_.*\.py$ ]]; then
+      if [ -f "$word" ] && [[ ! " ${read_files[*]} " =~ " ${word} " ]]; then
+        echo "=== Test File Reference: $word ===" >> "$context_file"
+        cat -- "$word" >> "$context_file"
+        echo "" >> "$context_file"
+        break
+      fi
+    fi
+  done
+fi
+
+# Add target files
+echo "### TARGET FILES" >> "$context_file"
+for tf in "${target_files[@]}"; do
+  if [ -f "$tf" ]; then
+    echo "=== Target File (Existing): $tf ===" >> "$context_file"
+    cat -- "$tf" >> "$context_file"
+    echo "" >> "$context_file"
+  else
+    echo "=== Target File (New file to create): $tf ===" >> "$context_file"
+    echo "(This file does not exist yet. Generate its complete contents.)" >> "$context_file"
+    echo "" >> "$context_file"
+  fi
+done
+
+# System Prompt
+SYSTEM_PROMPT="You are an expert autonomous software engineer acting as an atomic task worker.
+Your instructions:
+1. Implement the user's task instruction strictly and precisely.
+2. For each target file:
+   - If creating a NEW file: output the complete file contents wrapped in a markdown code fence with the filepath, e.g.:
+     \`\`\`filepath/to/file.ext
+     ...complete file content...
+     \`\`\`
+   - If EDITING an existing file: you may output either the full updated file in a code fence with its filepath, OR standard SEARCH/REPLACE diff blocks:
+     <<<<<<< SEARCH
+     ...exact lines from original file...
+     =======
+     ...replacement lines...
+     >>>>>>> REPLACE
+3. Never output conversational explanations, greetings, comments outside code blocks, or notes. Output ONLY the code blocks."
+
+# Initialize conversation messages JSON
+shunt_tmpfile messages_file || exit 1
+jq -n \
+  --arg sys "$SYSTEM_PROMPT" \
+  --rawfile user_content "$context_file" \
+  '[
+    {role: "system", content: $sys},
+    {role: "user", content: $user_content}
+  ]' > "$messages_file"
+
+# Helper to apply generated changes to target files
+apply_changes() {
+  local raw_response="$1"
+  python3 - << 'PYEOF' "$raw_response" "${target_files[@]}"
+import sys, os, re
+
+response = sys.argv[1]
+targets = sys.argv[2:]
+
+# 1. Look for SEARCH/REPLACE blocks first
+search_replace_pattern = re.compile(r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE', re.DOTALL)
+matches = list(search_replace_pattern.finditer(response))
+
+if matches and len(targets) == 1:
+    target_path = targets[0]
+    if os.path.exists(target_path):
+        with open(target_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        applied = 0
+        for m in matches:
+            search_block = m.group(1)
+            replace_block = m.group(2)
+            if search_block in content:
+                content = content.replace(search_block, replace_block, 1)
+                applied += 1
+        if applied > 0:
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f"APPLIED_DIFF:{target_path}:{applied}")
+            sys.exit(0)
+
+# 2. Look for code fences with target filename in fence info or header
+fence_pattern = re.compile(r'```(?:[a-zA-Z0-9_-]+[ \t]+)?([^\n`]*)\n(.*?)\n```', re.DOTALL)
+fence_matches = list(fence_pattern.finditer(response))
+
+handled = set()
+for m in fence_matches:
+    header = m.group(1).strip()
+    code = m.group(2)
+    
+    # Try to match header with one of the target files
+    matched_target = None
+    for t in targets:
+        if t in header or os.path.basename(t) in header:
+            matched_target = t
+            break
+    
+    if not matched_target and len(targets) == 1 and not handled:
+        matched_target = targets[0]
+
+    if matched_target and matched_target not in handled:
+        os.makedirs(os.path.dirname(os.path.abspath(matched_target)), exist_ok=True)
+        with open(matched_target, 'w', encoding='utf-8') as f:
+            f.write(code + '\n')
+        handled.add(matched_target)
+        print(f"WROTE_FILE:{matched_target}")
+
+# 3. Fallback: if single target and response has a generic code block without filename
+if not handled and len(targets) == 1:
+    raw_blocks = re.findall(r'```(?:[a-zA-Z0-9_-]+)?\n(.*?)\n```', response, re.DOTALL)
+    if raw_blocks:
+        t = targets[0]
+        os.makedirs(os.path.dirname(os.path.abspath(t)), exist_ok=True)
+        with open(t, 'w', encoding='utf-8') as f:
+            f.write(raw_blocks[0] + '\n')
+        print(f"WROTE_FILE:{t}")
+PYEOF
+}
+
+# 5. Capability C: Self-Correction Loop
+attempt=1
+success=false
+last_stderr=""
+last_stdout=""
+modified_files=()
+
+while [ "$attempt" -le "$max_retries" ]; do
+  # Call local LLM
+  response=$(shunt_invoke_messages "$messages_file") || {
+    cat << JSON
+{
+  "status": "failed",
+  "task_id": "$task_id",
+  "attempt": $attempt,
+  "error": "Local LLM invocation failed during inference."
+}
+JSON
+    exit 1
+  }
+
+  # Apply code changes to files
+  apply_output=$(apply_changes "$response" 2>/dev/null || true)
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE):([^:]+) ]]; then
+      fpath="${BASH_REMATCH[2]}"
+      [[ ! " ${modified_files[*]} " =~ " ${fpath} " ]] && modified_files+=("$fpath")
+    fi
+  done <<< "$apply_output"
+
+  # Run verification command if defined
+  if [ -z "$verification_command" ]; then
+    success=true
+    last_stdout="No verification command specified; changes applied directly."
+    break
+  fi
+
+  shunt_tmpfile test_stdout_file || exit 1
+  shunt_tmpfile test_stderr_file || exit 1
+
+  export PYTHONDONTWRITEBYTECODE=1
+  set +e
+  eval "$verification_command" > "$test_stdout_file" 2> "$test_stderr_file"
+  test_rc=$?
+  set -e
+
+  last_stdout=$(tail -n 30 "$test_stdout_file")
+  last_stderr=$(tail -n 30 "$test_stderr_file")
+
+  if [ "$test_rc" -eq 0 ]; then
+    success=true
+    break
+  fi
+
+  # Verification failed; prepare retry turn if attempts remaining
+  if [ "$attempt" -lt "$max_retries" ]; then
+    error_summary="Verification command '$verification_command' failed with exit code $test_rc."
+    [ -n "$last_stderr" ] && error_summary="$error_summary\nStderr:\n$last_stderr"
+    [ -n "$last_stdout" ] && error_summary="$error_summary\nStdout tail:\n$last_stdout"
+    error_summary="$error_summary\nPlease fix the implementation in the target file(s) to pass this verification."
+
+    # Append assistant response and feedback user turn to messages JSON
+    updated_msgs=$(jq \
+      --arg asst "$response" \
+      --arg fb "$error_summary" \
+      '. + [
+        {role: "assistant", content: $asst},
+        {role: "user", content: $fb}
+      ]' "$messages_file")
+    echo "$updated_msgs" > "$messages_file"
+  fi
+
+  attempt=$((attempt + 1))
+done
+
+# Calculate diff summary if git is available
+diff_summary=""
+if command -v git >/dev/null 2>&1 && [ ${#modified_files[@]} -gt 0 ]; then
+  diff_summary=$(git diff --stat -- "${modified_files[@]}" 2>/dev/null | tail -1 | xargs || true)
+fi
+[ -z "$diff_summary" ] && diff_summary="Modified ${#modified_files[@]} file(s)"
+
+# 6. Capability D: Clean Output Payload for Cloud Agent
+if [ "$success" = "true" ]; then
+  # Build modified files JSON array
+  mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
+
+  cat << JSON
+{
+  "status": "success",
+  "task_id": "$task_id",
+  "attempts": $attempt,
+  "files_modified": $mod_json,
+  "test_output": $(echo "$last_stdout" | jq -R -s .),
+  "diff_summary": "$diff_summary"
+}
+JSON
+  exit 0
+else
+  # Handle Rollback if configured
+  rolled_back=false
+  if [ -n "$rollback_command" ]; then
+    eval "$rollback_command" >/dev/null 2>&1 || true
+    rolled_back=true
+  fi
+
+  mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
+  combined_err="$last_stderr"
+  [ -z "$combined_err" ] && combined_err="$last_stdout"
+
+  cat << JSON
+{
+  "status": "failed",
+  "task_id": "$task_id",
+  "attempts": $max_retries,
+  "files_modified": $mod_json,
+  "rolled_back": $rolled_back,
+  "error": "Verification failed after $max_retries attempts",
+  "stderr_tail": $(echo "$combined_err" | jq -R -s .)
+}
+JSON
+  exit 1
+fi

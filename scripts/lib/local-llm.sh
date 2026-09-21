@@ -21,12 +21,16 @@ shunt_load_config() {
 
   if [ -n "$cfg_file" ] && command -v jq >/dev/null 2>&1; then
     local cfg_endpoint cfg_model cfg_temp cfg_timeout cfg_key cfg_min_lines
+    local cfg_enabled cfg_hook_view cfg_hook_run
     cfg_endpoint=$(jq -r '.endpoint // empty' "$cfg_file" 2>/dev/null)
     cfg_model=$(jq -r '.model // empty' "$cfg_file" 2>/dev/null)
     cfg_temp=$(jq -r '.temperature // empty' "$cfg_file" 2>/dev/null)
     cfg_timeout=$(jq -r '.timeout_seconds // empty' "$cfg_file" 2>/dev/null)
     cfg_key=$(jq -r '.api_key // empty' "$cfg_file" 2>/dev/null)
     cfg_min_lines=$(jq -r '.min_lines // empty' "$cfg_file" 2>/dev/null)
+    cfg_enabled=$(jq -r 'if .enabled == null then "" else .enabled end' "$cfg_file" 2>/dev/null)
+    cfg_hook_view=$(jq -r 'if .hooks.view_file == null then "" else .hooks.view_file end' "$cfg_file" 2>/dev/null)
+    cfg_hook_run=$(jq -r 'if .hooks.run_command == null then "" else .hooks.run_command end' "$cfg_file" 2>/dev/null)
 
     [ -z "${SHUNT_ENDPOINT:-}" ] && [ -n "$cfg_endpoint" ] && SHUNT_ENDPOINT="$cfg_endpoint"
     [ -z "${SHUNT_MODEL:-}" ] && [ -n "$cfg_model" ] && SHUNT_MODEL="$cfg_model"
@@ -34,6 +38,9 @@ shunt_load_config() {
     [ -z "${SHUNT_TIMEOUT_SECONDS:-}" ] && [ -n "$cfg_timeout" ] && SHUNT_TIMEOUT_SECONDS="$cfg_timeout"
     [ -z "${SHUNT_API_KEY:-}" ] && [ -n "$cfg_key" ] && SHUNT_API_KEY="$cfg_key"
     [ -z "${SHUNT_MIN_LINES:-}" ] && [ -n "$cfg_min_lines" ] && SHUNT_MIN_LINES="$cfg_min_lines"
+    [ -z "${SHUNT_ENABLED:-}" ] && [ -n "$cfg_enabled" ] && SHUNT_ENABLED="$cfg_enabled"
+    [ -z "${SHUNT_HOOK_VIEW_FILE:-}" ] && [ -n "$cfg_hook_view" ] && SHUNT_HOOK_VIEW_FILE="$cfg_hook_view"
+    [ -z "${SHUNT_HOOK_RUN_COMMAND:-}" ] && [ -n "$cfg_hook_run" ] && SHUNT_HOOK_RUN_COMMAND="$cfg_hook_run"
   fi
 
   SHUNT_ENDPOINT="${SHUNT_ENDPOINT:-$DEFAULT_ENDPOINT}"
@@ -42,17 +49,59 @@ shunt_load_config() {
   SHUNT_TIMEOUT_SECONDS="${SHUNT_TIMEOUT_SECONDS:-$DEFAULT_TIMEOUT_SECONDS}"
   SHUNT_MIN_LINES="${SHUNT_MIN_LINES:-$DEFAULT_MIN_LINES}"
   SHUNT_API_KEY="${SHUNT_API_KEY:-}"
+  SHUNT_ENABLED="${SHUNT_ENABLED:-true}"
+  SHUNT_HOOK_VIEW_FILE="${SHUNT_HOOK_VIEW_FILE:-true}"
+  SHUNT_HOOK_RUN_COMMAND="${SHUNT_HOOK_RUN_COMMAND:-true}"
 }
 
 shunt_load_config
 
-# Temporary file management with automatic cleanup on exit
+shunt_is_enabled() {
+  local disabled_file="${HOME}/.config/shunt-local/disabled"
+  if [ -f "$disabled_file" ]; then
+    return 1
+  fi
+  if [ "$SHUNT_ENABLED" = "false" ] || [ "$SHUNT_ENABLED" = "0" ]; then
+    return 1
+  fi
+  return 0
+}
+
+shunt_hook_is_enabled() {
+  local hook_name="$1"
+  if ! shunt_is_enabled; then
+    return 1
+  fi
+  case "$hook_name" in
+    view_file)
+      if [ "$SHUNT_HOOK_VIEW_FILE" = "false" ] || [ "$SHUNT_HOOK_VIEW_FILE" = "0" ]; then
+        return 1
+      fi
+      ;;
+    run_command)
+      if [ "$SHUNT_HOOK_RUN_COMMAND" = "false" ] || [ "$SHUNT_HOOK_RUN_COMMAND" = "0" ]; then
+        return 1
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# Temporary file management with automatic cleanup on main process exit
 SHUNT_TMPFILES=()
+SHUNT_PID="$$"
+
+shunt_cleanup() {
+  if [ "$$" -eq "$SHUNT_PID" ]; then
+    rm -f "${SHUNT_TMPFILES[@]}" 2>/dev/null || true
+  fi
+}
+trap shunt_cleanup EXIT INT TERM
+
 shunt_tmpfile() {
   local f
   f=$(mktemp) || return 1
   SHUNT_TMPFILES+=("$f")
-  trap 'rm -f "${SHUNT_TMPFILES[@]}"' EXIT INT TERM
   printf -v "$1" '%s' "$f"
 }
 
@@ -101,36 +150,10 @@ shunt_strip_thinking() {
   echo "$content" | sed -e '/<think>/,/<\/think>/d'
 }
 
-shunt_invoke() {
-  local mode_name="$1" message_file="$2"
-  local system_prompt=""
-
-  if [ "$mode_name" = "bulk-reader" ]; then
-    system_prompt="You are a precise code analyst. Read the provided files and answer the question concisely. Output structured bullets only. No greetings, no prose, no preambles, no summaries. Lead every bullet with the exact name, type, or line number. Use nested bullets for details. Skip anything the caller did not ask for."
-  elif [ "$mode_name" = "code-writer" ]; then
-    system_prompt="You generate code files based on a spec and reference files. Match the existing patterns, conventions, naming, and style exactly. Output only the code — no explanations, no markdown fences unless asked. If the spec is ambiguous, make reasonable choices that match the patterns in the reference code."
-  else
-    system_prompt="You are an expert coding assistant. Respond accurately and concisely."
-  fi
-
-  shunt_tmpfile payload_file || return 1
+shunt_invoke_payload() {
+  local payload_file="$1"
   shunt_tmpfile response_file || return 1
   shunt_tmpfile stderr_file || return 1
-
-  jq -n \
-    --arg model "$SHUNT_MODEL" \
-    --arg sys "$system_prompt" \
-    --rawfile user "$message_file" \
-    --argjson temp "$SHUNT_TEMPERATURE" \
-    '{
-      model: $model,
-      temperature: $temp,
-      messages: [
-        {role: "system", content: $sys},
-        {role: "user", content: $user}
-      ],
-      stream: false
-    }' > "$payload_file"
 
   local auth_header=()
   if [ -n "$SHUNT_API_KEY" ]; then
@@ -185,4 +208,54 @@ shunt_invoke() {
 
   text=$(shunt_strip_thinking "$text")
   printf '%s\n' "$text"
+}
+
+shunt_invoke() {
+  local mode_name="$1" message_file="$2"
+  local system_prompt=""
+
+  if [ "$mode_name" = "bulk-reader" ]; then
+    system_prompt="You are a precise code analyst. Read the provided files and answer the question concisely. Output structured bullets only. No greetings, no prose, no preambles, no summaries. Lead every bullet with the exact name, type, or line number. Use nested bullets for details. Skip anything the caller did not ask for."
+  elif [ "$mode_name" = "code-writer" ]; then
+    system_prompt="You generate code files based on a spec and reference files. Match the existing patterns, conventions, naming, and style exactly. Output only the code — no explanations, no markdown fences unless asked. If the spec is ambiguous, make reasonable choices that match the patterns in the reference code."
+  else
+    system_prompt="You are an expert coding assistant. Respond accurately and concisely."
+  fi
+
+  shunt_tmpfile payload_file || return 1
+
+  jq -n \
+    --arg model "$SHUNT_MODEL" \
+    --arg sys "$system_prompt" \
+    --rawfile user "$message_file" \
+    --argjson temp "$SHUNT_TEMPERATURE" \
+    '{
+      model: $model,
+      temperature: $temp,
+      messages: [
+        {role: "system", content: $sys},
+        {role: "user", content: $user}
+      ],
+      stream: false
+    }' > "$payload_file"
+
+  shunt_invoke_payload "$payload_file"
+}
+
+shunt_invoke_messages() {
+  local messages_file="$1"
+  shunt_tmpfile payload_file || return 1
+
+  jq -n \
+    --arg model "$SHUNT_MODEL" \
+    --slurpfile msgs "$messages_file" \
+    --argjson temp "$SHUNT_TEMPERATURE" \
+    '{
+      model: $model,
+      temperature: $temp,
+      messages: $msgs[0],
+      stream: false
+    }' > "$payload_file"
+
+  shunt_invoke_payload "$payload_file"
 }

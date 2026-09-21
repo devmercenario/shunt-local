@@ -1,0 +1,205 @@
+#!/bin/bash
+# Main CLI entrypoint for shunt-local: master toggle, subhook management, and subtask execution.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+. "$SCRIPT_DIR/lib/local-llm.sh"
+
+CONFIG_DIR="${HOME}/.config/shunt-local"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
+DISABLED_FILE="${CONFIG_DIR}/disabled"
+
+ensure_config_exists() {
+  mkdir -p "$CONFIG_DIR"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cat << 'EOF' > "$CONFIG_FILE"
+{
+  "enabled": true,
+  "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+  "model": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+  "temperature": 0.2,
+  "min_lines": 350,
+  "timeout_seconds": 180,
+  "api_key": "",
+  "hooks": {
+    "view_file": true,
+    "run_command": true
+  }
+}
+EOF
+  fi
+}
+
+cmd_on() {
+  ensure_config_exists
+  rm -f "$DISABLED_FILE"
+  if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ]; then
+    local tmp
+    tmp=$(mktemp)
+    jq '.enabled = true' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+  fi
+  echo "✔ shunt-local is now ENABLED globally (Master Switch ON)"
+}
+
+cmd_off() {
+  ensure_config_exists
+  touch "$DISABLED_FILE"
+  if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ]; then
+    local tmp
+    tmp=$(mktemp)
+    jq '.enabled = false' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+  fi
+  echo "✖ shunt-local is now DISABLED globally (Master Switch OFF - all hooks bypassed)"
+}
+
+cmd_hook() {
+  local hook_name="${1:-}"
+  local action="${2:-}"
+
+  if [ -z "$hook_name" ] || [ -z "$action" ]; then
+    echo "Usage: shunt-local hook <view_file|run_command> <on|off|status>" >&2
+    exit 1
+  fi
+
+  case "$hook_name" in
+    view_file|run_command) ;;
+    *)
+      echo "Error: Unknown hook '$hook_name'. Valid hooks: view_file, run_command" >&2
+      exit 1
+      ;;
+  esac
+
+  ensure_config_exists
+
+  case "$action" in
+    on|enable|true)
+      local tmp
+      tmp=$(mktemp)
+      jq --arg h "$hook_name" '.hooks[$h] = true' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+      echo "✔ Sub-hook '$hook_name' is now ENABLED"
+      ;;
+    off|disable|false)
+      local tmp
+      tmp=$(mktemp)
+      jq --arg h "$hook_name" '.hooks[$h] = false' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+      echo "✖ Sub-hook '$hook_name' is now DISABLED"
+      ;;
+    status)
+      local val
+      val=$(jq -r --arg h "$hook_name" '.hooks[$h] // true' "$CONFIG_FILE" 2>/dev/null)
+      echo "Sub-hook '$hook_name': $val"
+      ;;
+    *)
+      echo "Error: Invalid action '$action'. Use 'on' or 'off'." >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_status() {
+  shunt_load_config
+
+  echo "════════════════════════════════════════════════════════════════"
+  echo "                     shunt-local Status"
+  echo "════════════════════════════════════════════════════════════════"
+
+  if shunt_is_enabled; then
+    printf "Master Switch:       \033[32m✔ ENABLED\033[0m\n"
+  else
+    printf "Master Switch:       \033[31m✖ DISABLED\033[0m (All hooks bypassing)\n"
+  fi
+
+  echo ""
+  echo "Sub-hooks (Active when Master is ON):"
+  if shunt_hook_is_enabled "view_file"; then
+    printf "  ├── [view_file]    \033[32m✔ ENABLED\033[0m (intercepts reads > %s lines)\n" "$SHUNT_MIN_LINES"
+  else
+    printf "  ├── [view_file]    \033[31m✖ DISABLED\033[0m\n"
+  fi
+
+  if shunt_hook_is_enabled "run_command"; then
+    printf "  └── [run_command]  \033[32m✔ ENABLED\033[0m (intercepts cat/head/tail)\n"
+  else
+    printf "  └── [run_command]  \033[31m✖ DISABLED\033[0m\n"
+  fi
+
+  echo ""
+  echo "Inference Backend:"
+  echo "  Endpoint:          $SHUNT_ENDPOINT"
+  echo "  Model:             $SHUNT_MODEL"
+  echo "  Timeout:           ${SHUNT_TIMEOUT_SECONDS}s"
+
+  if shunt_is_online; then
+    printf "  Server Reachable:  \033[32m✔ ONLINE\033[0m\n"
+  else
+    printf "  Server Reachable:  \033[33m▲ OFFLINE\033[0m (Hooks fail-open to cloud)\n"
+  fi
+  echo "════════════════════════════════════════════════════════════════"
+}
+
+usage() {
+  cat << 'EOF'
+shunt-local — Hybrid AI Coding Delegation & Management
+
+Usage:
+  shunt-local <command> [arguments]
+
+Control Commands:
+  on | enable                  Enable master switch (intercept large reads & enable workers)
+  off | disable                Disable master switch (bypass all hooks immediately)
+  status                       Show current master switch, subhook, and backend status
+  hook <name> <on|off>         Enable or disable a specific subhook (view_file, run_command)
+
+Execution Commands:
+  exec [options]               Execute an autonomous subtask with local LLM & verification
+  read [options]               Delegate a large file read (alias to bulk-read)
+  write [options]              Generate code from spec (alias to code-write)
+  update                       Update shunt-local to latest version
+
+Examples:
+  shunt-local on
+  shunt-local off
+  shunt-local hook view_file off
+  shunt-local status
+  shunt-local exec --instruction "Add auth tests" --files "tests/auth.test.ts" --test-cmd "npm test"
+EOF
+}
+
+SUBCOMMAND="${1:-}"
+shift || true
+
+case "$SUBCOMMAND" in
+  on|enable)
+    cmd_on
+    ;;
+  off|disable)
+    cmd_off
+    ;;
+  status)
+    cmd_status
+    ;;
+  hook)
+    cmd_hook "$@"
+    ;;
+  exec)
+    exec "$SCRIPT_DIR/task-exec" "$@"
+    ;;
+  read|bulk-read)
+    exec "$SCRIPT_DIR/bulk-read" "$@"
+    ;;
+  write|code-write)
+    exec "$SCRIPT_DIR/code-write" "$@"
+    ;;
+  update|shunt-update)
+    exec "$SCRIPT_DIR/shunt-update" "$@"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    echo "Unknown command: $SUBCOMMAND" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

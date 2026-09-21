@@ -33,7 +33,7 @@ fi
 
 # 3. Install binaries in ~/.local/bin
 mkdir -p "$BIN_DIR"
-for bin_script in bulk-read code-write shunt-update; do
+for bin_script in bulk-read code-write shunt-update shunt-local task-exec; do
   target="$SCRIPT_DIR/scripts/$bin_script"
   if [ -f "$target" ]; then
     chmod +x "$target"

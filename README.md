@@ -173,12 +173,17 @@ To remove `shunt-local` and restore your previous configuration at any time:
 
 ```json
 {
+  "enabled": true,
   "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
   "model": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
   "temperature": 0.2,
   "min_lines": 350,
   "timeout_seconds": 180,
-  "api_key": ""
+  "api_key": "",
+  "hooks": {
+    "view_file": true,
+    "run_command": true
+  }
 }
 ```
 
@@ -186,12 +191,60 @@ To remove `shunt-local` and restore your previous configuration at any time:
 
 | Option | Env Variable | Default | Description |
 | :--- | :--- | :--- | :--- |
+| `enabled` | `SHUNT_ENABLED` | `true` | Master Switch: globally enable/disable all hooks and delegation |
+| `hooks.view_file` | `SHUNT_HOOK_VIEW_FILE` | `true` | Enable/disable file size interception (>350 lines) |
+| `hooks.run_command` | `SHUNT_HOOK_RUN_COMMAND` | `true` | Enable/disable bash read command interception (cat/head/tail) |
 | `endpoint` | `SHUNT_ENDPOINT` | `http://127.0.0.1:8080/v1/chat/completions` | Local inference server URL |
 | `model` | `SHUNT_MODEL` | `Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` | Model identifier passed to local server |
 | `temperature` | `SHUNT_TEMPERATURE`| `0.2` | Sampling temperature (low for deterministic code analysis) |
 | `min_lines` | `SHUNT_MIN_LINES` | `350` | File line threshold before blocking direct reads |
 | `timeout_seconds` | `SHUNT_TIMEOUT_SECONDS` | `180` | Max duration before timing out local inference |
 | `api_key` | `SHUNT_API_KEY` | `""` | Optional Bearer authorization token header |
+
+---
+
+## 🎛️ CLI & Management Commands
+
+`shunt-local` provides a unified CLI to manage switches and execute tasks:
+
+### Master & Sub-hook Switches
+
+```bash
+# Global Master Switch (instant ON / OFF)
+shunt-local on          # Enables master switch
+shunt-local off         # Disables master switch (all hooks bypass immediately)
+
+# Individual Sub-hook Management (when master is ON)
+shunt-local hook view_file on|off
+shunt-local hook run_command on|off
+
+# Inspect full status tree
+shunt-local status
+```
+
+### Autonomous Subtask Worker (`shunt-local exec`)
+
+Execute micro-tasks locally using your GPU LLM with automated test verification, self-correction, and rollback:
+
+```bash
+# Direct CLI invocation
+shunt-local exec \
+  --instruction "Implement validateToken method in auth service" \
+  --files "src/auth/jwt.ts" \
+  --read-files "src/auth/types.ts" \
+  --test-cmd "npm test -- tests/auth.test.ts" \
+  --max-retries 3
+
+# Or via structured TaskContract JSON
+shunt-local exec --spec '{
+  "instruction": "Create migration adding status column to users",
+  "target_files": ["migrations/20260921_add_status_to_users.sql"],
+  "read_files": ["prisma/schema.prisma"],
+  "verification_command": "npx prisma migrate dev --dry-run",
+  "rollback_command": "rm -f migrations/20260921_add_status_to_users.sql",
+  "max_retries": 3
+}'
+```
 
 ---
 

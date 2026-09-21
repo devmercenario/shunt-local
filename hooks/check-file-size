@@ -7,6 +7,12 @@ if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
   . "$HOOK_DIR/../scripts/lib/local-llm.sh"
 fi
 
+# If master switch is OFF or view_file sub-hook is disabled, allow immediately
+if ! shunt_hook_is_enabled "view_file"; then
+  echo '{"decision": "allow"}'
+  exit 0
+fi
+
 MIN_LINES="${SHUNT_MIN_LINES:-350}"
 case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
 

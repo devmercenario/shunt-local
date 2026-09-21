@@ -133,6 +133,7 @@ run_suite "$PLUGIN_DIR/hooks/check-file-size" "$SCRIPT_DIR/hook-evals.json" "Rea
 run_suite "$PLUGIN_DIR/hooks/check-bash-read" "$SCRIPT_DIR/bash-hook-evals.json" "Bash hook (check-bash-read)"
 run_external_suite "$SCRIPT_DIR/config-evals.sh" "Config suite (shunt.config.json & env overrides)"
 run_external_suite "$SCRIPT_DIR/transport-evals.sh" "Transport suite (scripts/lib/local-llm.sh against mocked HTTP)"
+run_external_suite "$SCRIPT_DIR/task-exec-evals.sh" "Subtask worker suite (scripts/task-exec self-correction & rollback)"
 
 echo ""
 echo "════════════════════════════════════════════════════════════════"
