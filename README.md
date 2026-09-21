@@ -7,7 +7,8 @@
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <a href="https://github.com/ggml-org/llama.cpp"><img src="https://img.shields.io/badge/Backend-llama.cpp%20%7C%20vLLM%20%7C%20Ollama-orange.svg" alt="Backends"></a>
     <a href="#"><img src="https://img.shields.io/badge/Evals-65%2F65%20Passing-brightgreen.svg" alt="Evals"></a>
-    <a href="#"><img src="https://img.shields.io/badge/Platform-Google%20Antigravity%20%7C%20Claude%20Code-purple.svg" alt="Platforms"></a>
+    <a href="#"><img src="https://img.shields.io/badge/Platform-Google%20Antigravity%20%7C%20Claude%20Code%20%7C%20Cursor-purple.svg" alt="Platforms"></a>
+    <a href="#"><img src="https://img.shields.io/badge/OS-Linux%20%7C%20macOS%20%7C%20Windows%20WSL2-blue.svg" alt="OS Support"></a>
   </p>
 </p>
 
@@ -200,10 +201,24 @@ chmod +x install.sh
 
 The installer will:
 1. Validate system dependencies (`curl`, `jq`, `python3`).
-2. Generate your user configuration at `~/.config/shunt-local/config.json`.
-3. Install agent skills (`bulk-reader`, `code-writer`) into `~/.agents/skills/`.
-4. Register the plugin with Antigravity CLI via `agy plugin install .`.
-5. Register lifecycle hooks into `~/.gemini/config/hooks.json` (safely merging without affecting other plugins like `ai-memory`).
+2. Generate your user configuration at `~/.config/shunt-local/config.json` (protected with `0700`/`0600` permissions).
+3. Link CLI binaries (`shunt-local`, `task-exec`, `bulk-read`, `code-write`, `shunt-update`) into `~/.local/bin/`.
+4. Install agent skills (`bulk-reader`, `code-writer`, `subtask-worker`) into `~/.agents/skills/`.
+5. Register with Google Antigravity (`agy plugin install .` and `~/.gemini/config/hooks.json`).
+6. Register with Claude Code (`claude plugin install .` if `claude` is detected).
+7. Validate your `$PATH` to ensure `~/.local/bin` is accessible.
+
+### 🌐 Operating System & Platform Compatibility
+
+| OS / Platform | Support Level | Notes |
+| :--- | :--- | :--- |
+| **Linux** (Ubuntu, Debian, Fedora, Arch) | **100% Native** | Full hook interception, skills, and CLI binaries out-of-the-box. |
+| **macOS** (Apple Silicon / Intel) | **100% Native (POSIX)** | Portable symlink resolution; compatible with default Zsh/Bash shells. |
+| **Windows (WSL2)** | **100% Supported** | Recommended Windows environment for GPU acceleration (CUDA) and agents. |
+| **Windows (Native CMD / PowerShell)** | Manual CLI | Requires WSL2 or bash environment for lifecycle hooks. |
+| **Google Antigravity & Gemini CLI** | **100% Native** | PreToolUse hooks intercept `view_file` and `run_command` automatically. |
+| **Claude Code** | **100% Native** | Official plugin structure; intercepts `Read` and `Bash` via `hooks.json`. |
+| **Cursor** | Native CLI + Rules | Use bundled `.cursorrules` / `.cursor/rules/shunt-local.mdc` to guide delegation. |
 
 ### Clean Uninstall
 

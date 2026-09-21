@@ -109,6 +109,23 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
   echo "Registered PreToolUse hooks in $HOOKS_FILE"
 fi
 
+# 8. Register with Claude Code CLI if present
+if command -v claude >/dev/null 2>&1; then
+  echo "Registering with Claude Code (claude)..."
+  claude plugin install "$SCRIPT_DIR" 2>/dev/null || claude plugin add "$SCRIPT_DIR" 2>/dev/null || true
+fi
+
+# 9. Verify PATH includes ~/.local/bin (important for macOS and non-standard Linux setups)
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    echo ""
+    echo "⚠️  NOTE: $BIN_DIR is not currently in your \$PATH."
+    echo "   To use shunt-local, task-exec, and bulk-read from anywhere, add this to your shell config (~/.zshrc or ~/.bashrc):"
+    echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+    ;;
+esac
+
 echo ""
 echo "Installation complete!"
 echo "Configuration: $CONFIG_DIR/config.json"

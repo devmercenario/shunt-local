@@ -2,7 +2,13 @@
 # Delegate boilerplate code generation to local LLM code-writer mode
 # Usage: code-write --spec "write tests for UserService" --reference ref.test.ts --target out.test.ts
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 . "$SCRIPT_DIR/lib/local-llm.sh"
 
 MODE_NAME="code-writer"

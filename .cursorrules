@@ -1,0 +1,28 @@
+# Cursor Rules for shunt-local (Hybrid Local LLM Delegation)
+
+You are paired with `shunt-local`, a hybrid AI delegation tool that offloads large file reads and mechanical code implementation to a fast, zero-cost local LLM (e.g. Qwen 2.5 Coder 14B on llama-server/Ollama).
+
+## 1. Bulk File Reading (>350 Lines)
+When you need to inspect, query, or extract symbols from a file exceeding 350 lines (or multiple large files):
+- DO NOT read the entire file into the chat context.
+- Instead, invoke the local CLI command via your terminal:
+  ```bash
+  bulk-read --paths "path/to/large_file.ts" --question "Your specific question or symbol query"
+  ```
+- Use the concise returned bullets to proceed. This saves 90%+ context tokens and avoids attention degradation.
+
+## 2. Autonomous Subtask Delegation & TDD
+When implementing well-defined subtasks, boilerplate, migrations, or tests:
+- Act as the **Software Architect**:
+  1. Write or define failing tests (RED phase) and interface contracts first.
+  2. Delegate implementation to the local worker:
+     ```bash
+     shunt-local exec \
+       --instruction "Implement validateToken method in auth service" \
+       --files "src/auth/jwt.ts" \
+       --read-files "src/auth/types.ts" \
+       --test-cmd "npm test -- tests/auth.test.ts" \
+       --max-retries 3
+     ```
+  3. The local worker will autonomously generate code, apply changes to disk, run the verification command, and self-correct on test errors for up to 3 attempts.
+  4. Inspect the clean JSON return payload (`status: "success"`).

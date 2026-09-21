@@ -28,6 +28,12 @@ if command -v agy >/dev/null 2>&1; then
   echo "Unregistered plugin from agy"
 fi
 
+# 3. Unregister from Claude Code if present
+if command -v claude >/dev/null 2>&1; then
+  claude plugin uninstall shunt-local 2>/dev/null || claude plugin remove shunt-local 2>/dev/null || true
+  echo "Unregistered plugin from claude"
+fi
+
 # 3. Remove hooks from ~/.gemini/config/hooks.json
 if [ -f "$HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
   tmp_hooks=$(mktemp)

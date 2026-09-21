@@ -1,0 +1,16 @@
+---
+description: Offload large file reads (>350 lines) and mechanical coding subtasks to local LLM via shunt-local
+globs: *
+---
+
+# shunt-local Integration Rules
+
+Always leverage `shunt-local` to preserve cloud context tokens and run zero-cost local implementations:
+
+1. **Large File Reads**:
+   - For files >350 lines, delegate to local LLM:
+     `bulk-read --paths "<file>" --question "<query>"`
+
+2. **Subtask Worker Delegation**:
+   - For implementation tasks, migrations, and boilerplate:
+     `shunt-local exec --instruction "<spec>" --files "<targets>" --read-files "<contracts>" --test-cmd "<test>"`

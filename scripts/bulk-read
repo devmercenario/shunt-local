@@ -2,7 +2,13 @@
 # Delegate file reading to local LLM bulk-reader mode
 # Usage: bulk-read --question "what does this do?" --paths file1.ts file2.ts
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 . "$SCRIPT_DIR/lib/local-llm.sh"
 
 MODE_NAME="bulk-reader"
