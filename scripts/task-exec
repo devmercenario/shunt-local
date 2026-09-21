@@ -178,6 +178,7 @@ fi
 
 # Auto-detect test file in verification_command if not explicitly added
 if [ -n "$verification_command" ]; then
+  set -f
   for word in $verification_command; do
     if [[ "$word" =~ \.(test|spec)\.[a-zA-Z0-9]+$ ]] || [[ "$word" =~ test_.*\.py$ ]]; then
       if [ -f "$word" ] && [[ ! " ${read_files[*]} " =~ " ${word} " ]]; then
@@ -188,6 +189,7 @@ if [ -n "$verification_command" ]; then
       fi
     fi
   done
+  set +f
 fi
 
 # Add target files
@@ -240,13 +242,22 @@ import sys, os, re
 response = sys.argv[1]
 targets = sys.argv[2:]
 
+RESTRICTED_SYSTEM_DIRS = ('/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin')
+
+def is_safe_target(t):
+    abs_t = os.path.realpath(os.path.abspath(t))
+    for p in RESTRICTED_SYSTEM_DIRS:
+        if abs_t == p or abs_t.startswith(p + os.sep):
+            return False
+    return True
+
 # 1. Look for SEARCH/REPLACE blocks first
 search_replace_pattern = re.compile(r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE', re.DOTALL)
 matches = list(search_replace_pattern.finditer(response))
 
 if matches and len(targets) == 1:
     target_path = targets[0]
-    if os.path.exists(target_path):
+    if is_safe_target(target_path) and os.path.exists(target_path):
         with open(target_path, 'r', encoding='utf-8') as f:
             content = f.read()
         applied = 0
@@ -282,6 +293,9 @@ for m in fence_matches:
         matched_target = targets[0]
 
     if matched_target and matched_target not in handled:
+        if not is_safe_target(matched_target):
+            print(f"SECURITY_ERROR: Target path escapes working directory: {matched_target}", file=sys.stderr)
+            continue
         os.makedirs(os.path.dirname(os.path.abspath(matched_target)), exist_ok=True)
         with open(matched_target, 'w', encoding='utf-8') as f:
             f.write(code + '\n')
@@ -293,10 +307,11 @@ if not handled and len(targets) == 1:
     raw_blocks = re.findall(r'```(?:[a-zA-Z0-9_-]+)?\n(.*?)\n```', response, re.DOTALL)
     if raw_blocks:
         t = targets[0]
-        os.makedirs(os.path.dirname(os.path.abspath(t)), exist_ok=True)
-        with open(t, 'w', encoding='utf-8') as f:
-            f.write(raw_blocks[0] + '\n')
-        print(f"WROTE_FILE:{t}")
+        if is_safe_target(t):
+            os.makedirs(os.path.dirname(os.path.abspath(t)), exist_ok=True)
+            with open(t, 'w', encoding='utf-8') as f:
+                f.write(raw_blocks[0] + '\n')
+            print(f"WROTE_FILE:{t}")
 PYEOF
 }
 
@@ -342,7 +357,7 @@ JSON
 
   export PYTHONDONTWRITEBYTECODE=1
   set +e
-  eval "$verification_command" > "$test_stdout_file" 2> "$test_stderr_file"
+  bash -c "$verification_command" > "$test_stdout_file" 2> "$test_stderr_file"
   test_rc=$?
   set -e
 
@@ -387,22 +402,27 @@ if [ "$success" = "true" ]; then
   # Build modified files JSON array
   mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
 
-  cat << JSON
-{
-  "status": "success",
-  "task_id": "$task_id",
-  "attempts": $attempt,
-  "files_modified": $mod_json,
-  "test_output": $(echo "$last_stdout" | jq -R -s .),
-  "diff_summary": "$diff_summary"
-}
-JSON
+  jq -n \
+    --arg status "success" \
+    --arg task_id "$task_id" \
+    --argjson attempts "$attempt" \
+    --argjson files "$mod_json" \
+    --arg test_output "$last_stdout" \
+    --arg diff_summary "$diff_summary" \
+    '{
+      status: $status,
+      task_id: $task_id,
+      attempts: $attempts,
+      files_modified: $files,
+      test_output: $test_output,
+      diff_summary: $diff_summary
+    }'
   exit 0
 else
   # Handle Rollback if configured
   rolled_back=false
   if [ -n "$rollback_command" ]; then
-    eval "$rollback_command" >/dev/null 2>&1 || true
+    bash -c "$rollback_command" >/dev/null 2>&1 || true
     rolled_back=true
   fi
 
@@ -410,16 +430,22 @@ else
   combined_err="$last_stderr"
   [ -z "$combined_err" ] && combined_err="$last_stdout"
 
-  cat << JSON
-{
-  "status": "failed",
-  "task_id": "$task_id",
-  "attempts": $max_retries,
-  "files_modified": $mod_json,
-  "rolled_back": $rolled_back,
-  "error": "Verification failed after $max_retries attempts",
-  "stderr_tail": $(echo "$combined_err" | jq -R -s .)
-}
-JSON
+  jq -n \
+    --arg status "failed" \
+    --arg task_id "$task_id" \
+    --argjson attempts "$max_retries" \
+    --argjson files "$mod_json" \
+    --argjson rolled_back "$rolled_back" \
+    --arg error "Verification failed after $max_retries attempts" \
+    --arg stderr_tail "$combined_err" \
+    '{
+      status: $status,
+      task_id: $task_id,
+      attempts: $attempts,
+      files_modified: $files,
+      rolled_back: $rolled_back,
+      error: $error,
+      stderr_tail: $stderr_tail
+    }'
   exit 1
 fi

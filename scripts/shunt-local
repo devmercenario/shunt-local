@@ -12,6 +12,7 @@ DISABLED_FILE="${CONFIG_DIR}/disabled"
 
 ensure_config_exists() {
   mkdir -p "$CONFIG_DIR"
+  chmod 700 "$CONFIG_DIR" 2>/dev/null || true
   if [ ! -f "$CONFIG_FILE" ]; then
     cat << 'EOF' > "$CONFIG_FILE"
 {
@@ -29,6 +30,7 @@ ensure_config_exists() {
 }
 EOF
   fi
+  chmod 600 "$CONFIG_FILE" 2>/dev/null || true
 }
 
 cmd_on() {
@@ -37,7 +39,12 @@ cmd_on() {
   if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ]; then
     local tmp
     tmp=$(mktemp)
-    jq '.enabled = true' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    if jq '.enabled = true' "$CONFIG_FILE" > "$tmp"; then
+      mv "$tmp" "$CONFIG_FILE"
+      chmod 600 "$CONFIG_FILE" 2>/dev/null || true
+    else
+      rm -f "$tmp"
+    fi
   fi
   echo "✔ shunt-local is now ENABLED globally (Master Switch ON)"
 }
@@ -48,7 +55,12 @@ cmd_off() {
   if command -v jq >/dev/null 2>&1 && [ -f "$CONFIG_FILE" ]; then
     local tmp
     tmp=$(mktemp)
-    jq '.enabled = false' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+    if jq '.enabled = false' "$CONFIG_FILE" > "$tmp"; then
+      mv "$tmp" "$CONFIG_FILE"
+      chmod 600 "$CONFIG_FILE" 2>/dev/null || true
+    else
+      rm -f "$tmp"
+    fi
   fi
   echo "✖ shunt-local is now DISABLED globally (Master Switch OFF - all hooks bypassed)"
 }
@@ -76,13 +88,23 @@ cmd_hook() {
     on|enable|true)
       local tmp
       tmp=$(mktemp)
-      jq --arg h "$hook_name" '.hooks[$h] = true' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+      if jq --arg h "$hook_name" '.hooks[$h] = true' "$CONFIG_FILE" > "$tmp"; then
+        mv "$tmp" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE" 2>/dev/null || true
+      else
+        rm -f "$tmp"
+      fi
       echo "✔ Sub-hook '$hook_name' is now ENABLED"
       ;;
     off|disable|false)
       local tmp
       tmp=$(mktemp)
-      jq --arg h "$hook_name" '.hooks[$h] = false' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
+      if jq --arg h "$hook_name" '.hooks[$h] = false' "$CONFIG_FILE" > "$tmp"; then
+        mv "$tmp" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE" 2>/dev/null || true
+      else
+        rm -f "$tmp"
+      fi
       echo "✖ Sub-hook '$hook_name' is now DISABLED"
       ;;
     status)

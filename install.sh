@@ -24,12 +24,14 @@ done
 
 # 2. Setup user configuration directory
 mkdir -p "$CONFIG_DIR"
+chmod 700 "$CONFIG_DIR" 2>/dev/null || true
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
   cp "$SCRIPT_DIR/config.example.json" "$CONFIG_DIR/config.json"
   echo "Created default config at $CONFIG_DIR/config.json"
 else
   echo "Found existing config at $CONFIG_DIR/config.json"
 fi
+chmod 600 "$CONFIG_DIR/config.json" 2>/dev/null || true
 
 # 3. Install binaries in ~/.local/bin
 mkdir -p "$BIN_DIR"

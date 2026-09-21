@@ -100,7 +100,11 @@ trap shunt_cleanup EXIT INT TERM
 
 shunt_tmpfile() {
   local f
-  f=$(mktemp) || return 1
+  local old_umask
+  old_umask=$(umask)
+  umask 077
+  f=$(mktemp) || { umask "$old_umask"; return 1; }
+  umask "$old_umask"
   SHUNT_TMPFILES+=("$f")
   printf -v "$1" '%s' "$f"
 }
@@ -148,7 +152,7 @@ shunt_report_error() {
 shunt_strip_thinking() {
   local content="$1"
   # Strip reasoning/thinking tags (e.g. <think>...</think>) if output by the model
-  echo "$content" | sed -e '/<think>/,/<\/think>/d'
+  printf '%s\n' "$content" | sed -e '/<think>/,/<\/think>/d'
 }
 
 shunt_invoke_payload() {

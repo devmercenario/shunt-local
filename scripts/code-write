@@ -48,10 +48,12 @@ shunt_invoke "$MODE_NAME" "$message_file" > "$answer_file" || exit 1
 clean=$(sed '/^```/d' "$answer_file")
 
 if [ -n "$target" ]; then
-  echo "$clean" > "$target"
+  target_dir=$(dirname "$target")
+  [ -n "$target_dir" ] && mkdir -p "$target_dir"
+  printf '%s\n' "$clean" > "$target"
   echo "Wrote $(wc -l < "$target" | tr -d ' ') lines to $target" >&2
 else
-  echo "$clean"
+  printf '%s\n' "$clean"
 fi
 
 echo "[shunt-local: delegated to $SHUNT_MODEL]" >&2
