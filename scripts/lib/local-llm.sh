@@ -119,6 +119,7 @@ shunt_preflight() {
 }
 
 shunt_is_online() {
+  [ "${SHUNT_MOCK_ONLINE:-}" = "1" ] && return 0
   local base="${SHUNT_ENDPOINT%/}"
   local health_url
   if [[ "$base" == */v1/chat/completions ]]; then

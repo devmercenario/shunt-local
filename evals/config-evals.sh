@@ -24,6 +24,7 @@ check() {
 # Test 1: Default configuration when no file or env var is present
 (
   unset SHUNT_ENDPOINT SHUNT_MODEL SHUNT_TEMPERATURE SHUNT_MIN_LINES SHUNT_TIMEOUT_SECONDS SHUNT_API_KEY SHUNT_CONFIG_PATH
+  HOME="$WORKDIR"
   cd "$WORKDIR"
   . "$PLUGIN_DIR/scripts/lib/local-llm.sh"
   echo "$SHUNT_ENDPOINT|$SHUNT_MODEL|$SHUNT_TEMPERATURE|$SHUNT_MIN_LINES" > "$WORKDIR/res1"

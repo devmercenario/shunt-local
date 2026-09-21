@@ -6,7 +6,7 @@
   <p align="center">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <a href="https://github.com/ggml-org/llama.cpp"><img src="https://img.shields.io/badge/Backend-llama.cpp%20%7C%20vLLM%20%7C%20Ollama-orange.svg" alt="Backends"></a>
-    <a href="#"><img src="https://img.shields.io/badge/Evals-58%2F58%20Passing-brightgreen.svg" alt="Evals"></a>
+    <a href="#"><img src="https://img.shields.io/badge/Evals-65%2F65%20Passing-brightgreen.svg" alt="Evals"></a>
     <a href="#"><img src="https://img.shields.io/badge/Platform-Google%20Antigravity%20%7C%20Claude%20Code-purple.svg" alt="Platforms"></a>
   </p>
 </p>
@@ -32,7 +32,7 @@ This triggers three major bottlenecks:
 
 While enterprise systems shunt from one paid cloud model to another paid cloud model, **`shunt-local` reuses the local LLM already running on your developer workstation or GPU** (powered by [`llama.cpp`](https://github.com/ggml-org/llama.cpp), [Ollama](https://ollama.com), or [vLLM](https://github.com/vllm-project/vllm)).
 
-This establishes a true **Hybrid Intelligence Pipeline**:
+This establishes a true **Dual-Flow Hybrid Intelligence Pipeline**:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -43,33 +43,36 @@ This establishes a true **Hybrid Intelligence Pipeline**:
        │             THE ARCHITECT (Cloud Reasoning Agent)             │
        │               Google Antigravity / Claude Code               │
        │                                                              │
-       │  • System Design & Multi-File Planning                       │
-       │  • Deep Architectural Reasoning                              │
-       │  • Complex Debugging & Creative Synthesis                    │
-       └──────────────────────────────┬───────────────────────────────┘
-                                      │
-                         Attempts to read 1,200 lines
-                                      │
-                         ┌────────────▼─────────────┐
-                         │  PreToolUse Hook Gate    │
-                         │  (Intercepts & Redirects)│
-                         └────────────┬─────────────┘
-                                      │
-                         Shunts bulk task locally
-                                      │
-       ┌──────────────────────────────▼───────────────────────────────┐
+       │  • Codebase Pre-Investigation & "Grill-Me" Alignment         │
+       │  • Contract-Driven Design (Interfaces, Types, Schemas)       │
+       │  • Strict TDD: Writes failing tests first (RED phase)        │
+       └──────────────┬───────────────────────────────┬───────────────┘
+                      │                               │
+        [Flow 1: Bulk Read Gate]         [Flow 2: Subtask Worker Delegation]
+                      │                               │
+       Attempts to read 1,200+ lines       Dispatches TaskContract JSON
+                      │                    (instruction, targets, test-cmd)
+       ┌──────────────▼─────────────┐                 │
+       │    PreToolUse Hook Gate    │                 │
+       │  (Intercepts & Redirects)  │                 │
+       └──────────────┬─────────────┘                 │
+                      │                               │
+             Shunts to bulk-reader                    │
+                      │                               │
+       ┌──────────────▼───────────────────────────────▼───────────────┐
        │             THE WORKHORSE (Local GPU / Hardware LLM)         │
-       │            Qwen 2.5 Coder (7B / 14B) / Gemma / Llama         │
+       │               Qwen 2.5 Coder (14B / 7B / 32B IQ3)            │
        │                                                              │
-       │  • Zero-Cost, Zero-Latency Bulk File Ingestion               │
-       │  • AST / Function / Schema Extraction                        │
-       │  • Repetitive Boilerplate & Unit Test Stubs                  │
-       │  • 100% Private — Code Never Leaves Your Machine             │
-       └──────────────────────────────┬───────────────────────────────┘
-                                      │
-                       Returns 10-line concise answer
-                                      │
-       ┌──────────────────────────────▼───────────────────────────────┐
+       │  • Zero-Cost, Instant Bulk File Ingestion & AST Extraction   │
+       │  • Autonomous Code Implementation & SEARCH/REPLACE Diffs     │
+       │  • Self-Correction Loop: Runs test-cmd & fixes syntax/errors │
+       │  • 100% Private & Free: Runs at 55+ tok/s on Local Hardware  │
+       └──────────────┬───────────────────────────────┬───────────────┘
+                      │                               │
+        Returns 5-line summary              Returns clean JSON summary
+        (Zero file tokens retained)         (attempts, diff stat, green tests)
+                      │                               │
+       ┌──────────────▼───────────────────────────────▼───────────────┐
        │           Primary Agent Context Stays 90%+ Lean!             │
        └──────────────────────────────────────────────────────────────┘
 ```
@@ -84,13 +87,15 @@ This establishes a true **Hybrid Intelligence Pipeline**:
 - 🔌 **Universal OpenAI-Compatible Interface**: Works seamlessly with any engine exposing a standard `/v1/chat/completions` endpoint (`llama-server`, Ollama, vLLM, LM Studio, Jan, LocalAI).
 - 🧩 **Zero OS Argument Ceiling**: Unlike naive CLI tools that pass file contents as argv, `shunt-local` streams payloads over HTTP via temporary JSON files, enabling seamless digestion of 50,000+ line files without hitting `E2BIG` or `ARG_MAX` limitations.
 - 🧹 **Automatic Reasoning Tag Stripping**: Automatically filters out internal `<think>...</think>` tags generated by modern reasoning models (DeepSeek, Qwen 3.8, etc.) before handing output back to the agent.
-- 🧪 **Rock-Solid Reliability**: 100% test-driven with 58 automated integration and unit evals.
+- 🧪 **Rock-Solid Reliability**: 100% test-driven with 65 automated integration and unit evals.
 
 ---
 
 ## 🧠 How It Works Under the Hood
 
-`shunt-local` operates as an intelligent 3-layer pipeline:
+`shunt-local` operates as an intelligent 3-layer pipeline across two core execution flows:
+
+### Flow 1: Large File Inspection & Gatekeeping
 
 ```mermaid
 sequenceDiagram
@@ -117,14 +122,64 @@ sequenceDiagram
     Agent-->>Dev: "User authentication is handled in `VerifyToken` (auth_service.go:412)."
 ```
 
+### Flow 2: Autonomous Subtask Worker & TDD Execution Loop
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer
+    participant Architect as Cloud Architect (Antigravity)
+    participant Disk as Project Files / Disk
+    participant Worker as shunt-local exec
+    participant Qwen as Local Qwen-14B (RTX GPU)
+    participant Tester as Test / Verify Command
+
+    Note over Architect,Disk: Phase 0: Pre-Investigation Audit (Autonomous)
+    Architect->>Disk: Inspect conventions, DRY, security vectors & perf bottlenecks
+    Disk-->>Architect: Codebase context, patterns, existing services
+
+    Note over Architect,Dev: Phase 0: "Grill-Me" Alignment Interview
+    Architect->>Dev: Questions trade-offs, security boundaries, edge cases & recommendations
+    Dev-->>Architect: Confirms architectural decisions, contracts & constraints
+
+    Note over Architect,Disk: Phase 1 & Phase 2 (RED): Contracts & Tests First
+    Architect->>Disk: Phase 1: Writes interface types, schemas & DTOs
+    Architect->>Disk: Phase 2 (RED): Writes failing unit/integration tests
+    Tester-->>Architect: Tests fail deterministically (exit != 0)
+
+    Note over Architect,Worker: Phase 2 (GREEN): Local Worker Implementation
+    Architect->>Worker: shunt-local exec --files target.ts --read-files types.ts,test.ts --test-cmd "npm test"
+    
+    loop Self-Correction Loop (Up to max_retries)
+        Worker->>Qwen: Pack Context (Max 3 files: contract + test + target) + Instruction
+        Qwen-->>Worker: Generated code / SEARCH-REPLACE diffs
+        Worker->>Disk: Apply changes to target file
+        Worker->>Tester: Execute test-cmd
+        alt Test Passes (exit code 0)
+            Tester-->>Worker: 0 (GREEN)
+        else Test Fails (exit code != 0)
+            Tester-->>Worker: Non-zero + stderr / stack trace
+            Worker->>Qwen: "Test failed with [stderr]. Fix the implementation."
+        end
+    end
+
+    Worker-->>Architect: Clean JSON payload (status: success, attempts: 2, diff_summary)
+
+    Note over Architect,Disk: Phase 2 (REFACTOR): Clean Code & Linting
+    Architect->>Disk: Inspects code quality, enforces DRY, runs project linters
+    Architect-->>Dev: Feature complete & 100% green! Clean code ready for review.
+```
+
 ### The 3 Layers:
 
 1. **Layer 1: PreToolUse Hooks (The Gatekeeper)**
    - `hooks/check-file-size`: Intercepts `view_file` (Antigravity) and `Read` (Claude Code). If a file exceeds `min_lines` (default: 350) and no targeted `offset`/`limit` is provided, it blocks execution and instructs the agent to delegate.
    - `hooks/check-bash-read`: Catches terminal commands (`cat`, `head`, `tail`, `less`, `more`) aimed at large files unless they are piped or redirected.
-2. **Layer 2: Agent Skills & Scripts (The Delegator)**
+2. **Layer 2: Agent Skills & Scripts (The Delegator & Worker)**
+   - `scripts/shunt-local`: Unified CLI for Master Switch (`on`/`off`), subhook toggles, and task dispatching.
+   - `skills/subtask-worker` (`scripts/task-exec`): Autonomous worker implementing the TaskContract, Context Packer, self-correction retry loop, and rollback handler.
    - `skills/bulk-reader` (`scripts/bulk-reader`): Bundles multi-file contexts or large files into an XML-formatted prompt and posts it to the local engine.
-   - `skills/code-writer` (`scripts/code-writer`): Instructs the local LLM to generate boilerplate (tests, config, type definitions) and write the file directly to disk, completely bypassing the cloud model's output token limits.
+   - `skills/code-writer` (`scripts/code-writer`): Instructs the local LLM to generate boilerplate (tests, config, type definitions) and write the file directly to disk.
 3. **Layer 3: Local Engine (The Hardware Muscle)**
    - Executes inference using quantized weights (GGUF, AWQ, EXL2).
 
@@ -248,46 +303,119 @@ shunt-local exec --spec '{
 
 ---
 
+## 🏛️ Architect Engineering Protocol: Pre-Investigation, Grill-Me & TDD
+
+When pair-programming with `shunt-local`, the Cloud Model (Antigravity / Claude Code) operates at the level of a **Staff / Principal Software Architect**. Rather than jumping blindly into writing code, it follows a rigorous 5-phase engineering lifecycle:
+
+```mermaid
+flowchart TD
+    subgraph P0["Phase 0: Pre-Investigation & Grill-Me Alignment"]
+        A1["1. Codebase Audit<br/>(Conventions, DRY, Security, Perf, SRP)"] --> A2["2. Grill-Me Interview<br/>(Trade-offs, Edge Cases, Recommendations)"]
+        A2 --> A3["3. Developer Alignment<br/>(Decisions & Constraints Confirmed)"]
+    end
+
+    subgraph P1["Phase 1: Contract-Driven Specification"]
+        B1["Write Canonical Contracts<br/>(Interfaces, Types, Schemas, DTOs)"]
+    end
+
+    subgraph P2["Phase 2: Strict TDD Lifecycle"]
+        C1["RED: Write Failing Tests<br/>(Assert acceptance criteria & edge cases)"] --> C2["GREEN: shunt-local exec<br/>(Local Qwen-14B satisfies test assertions)"]
+        C2 --> C3["Self-Correction Loop<br/>(Catches stderr & fixes code)"]
+        C3 --> C4["REFACTOR: Clean Code<br/>(DRY, loose coupling, linters)"]
+    end
+
+    subgraph P3["Phases 3 & 4: Execution Rules"]
+        D1["3-File Hard Constraint<br/>(Max 2 targets + 1-2 contracts)"]
+        D2["Sequential Atomic Progression<br/>(Contracts → Tests → Service → Controller → E2E)"]
+    end
+
+    P0 --> P1
+    P1 --> P2
+    P2 -.-> P3
+```
+
+### Phase 0: Codebase Pre-Investigation & "Grill-Me" Alignment (Mandatory)
+Before writing any plan or code, the Architect conducts an autonomous audit and interview:
+
+1. **Autonomous Pre-Investigation (The Audit)**:
+   - **Conventions & Patterns**: Inspects existing project files, naming standards, error response formats, validation libraries (e.g. Zod, Pydantic), and database patterns.
+   - **DRY & Incongruity Check**: Identifies duplicated logic or conflicting patterns to reuse existing services and avoid reinventing the wheel.
+   - **Security Audit**: Analyzes injection vectors, authentication/authorization boundaries, input sanitization, and secret handling.
+   - **Performance & Scalability**: Screens for N+1 queries, missing indexes, unindexed foreign keys, memory footprint, and blocking I/O on critical paths.
+   - **Maintainability & Clean Code**: Enforces Single Responsibility (SRP), loose coupling, and clean layer boundaries (Controller -> Service -> Repository).
+2. **The "Grill-Me" Interview (Interactive Alignment)**:
+   - The Architect presents trade-offs, edge cases, failure modes, and technical recommendations directly to the developer:
+     * *Architectural Trade-offs*: "Option A (Event-driven with Redis) vs Option B (Direct DB transaction). Recommendation: Option B for atomic consistency."
+     * *Edge Cases & Failure Modes*: "How should the system behave when third-party provider X times out or returns 429?"
+     * *Security & Boundaries*: "Should role validation happen at the middleware layer or inside the domain service?"
+   - The developer resolves all open design decisions before any planning or code generation starts.
+
+### Phase 1: Contract-Driven Specification (Interface-First)
+- Establish canonical contracts first: TypeScript interfaces, Pydantic models, SQL schemas, or DTOs.
+- These interfaces serve as `read_files` for all subsequent worker steps, guaranteeing seamless component integration.
+
+### Phase 2: Strict Test-Driven Development (TDD) Lifecycle
+Every micro-task follows the Red-Green-Refactor discipline:
+1. **RED (Test First)**: Write unit/integration tests asserting acceptance criteria and edge cases from Phase 0. The test MUST fail (`exit code != 0`) against the initial stub or missing implementation.
+2. **GREEN (Worker Implementation)**: Dispatch to `shunt-local exec`:
+   - `--read-files`: Interface contracts + newly created failing test.
+   - `--files`: Target implementation file.
+   - `--test-cmd`: Command executing the test.
+   - The local Qwen model reads test assertions and implements the code until the test passes. If tests fail, the internal self-correction loop catches stderr and fixes the code autonomously.
+3. **REFACTOR (Clean Code & Quality)**: Verify code is clean, free of duplicate logic (DRY), and compliant with project linters (`npx eslint`, `cargo check`, `ruff check`, `tsc`) while all tests remain green.
+
+### Phase 3: The 3-File Hard Constraint
+To maintain maximum accuracy and speed on the local model:
+- Total files per subtask must never exceed 3:
+  - 1 to 2 `target_files` (files modified or created).
+  - 1 to 2 `read_files` (reference interfaces, schemas, or test files).
+
+### Phase 4: Sequential Atomic Progression
+Execute one subtask at a time:
+1. `step-01-contracts`: Interfaces, DTOs, and schemas.
+2. `step-02-unit-tests-red`: Tests asserting domain service contracts.
+3. `step-03-service-green`: Local worker implements domain logic satisfying tests.
+4. `step-04-controller-integration`: API routes/controllers wired to the service.
+5. `step-05-e2e-regression`: End-to-end verification and full suite execution.
+
+---
+
 ## 🖥️ Recommended Local Models & Server Setup
 
-The primary recommended model family for `shunt-local` is **`Qwen/Qwen2.5-Coder-7B-Instruct-GGUF`**.
+### 🥇 Sweet Spot (Recommended): `Qwen2.5-Coder-14B-Instruct`
+For 16 GB VRAM GPUs (NVIDIA RTX 5060 Ti, 4060 Ti, Apple Silicon 16GB+), **`Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M`** is the gold standard:
+- **100% GPU Offload**: Consumes ~9.0 GB VRAM, leaving 6.5 GB free for a massive 40,960 token context window.
+- **Blazing Speed**: Streams at **~50–65 tokens/second** with zero CoT latency (first token in ~15ms).
+- **Superior Coder Fidelity**: Substantially outperforms 7B models in complex type checking, SEARCH/REPLACE diff accuracy, and self-correcting syntax errors from test stack traces.
 
-### 💡 Why Non-Reasoning (No-CoT) Models are Critical for Shunting
+### 🥈 Alternative Models
 
-Unlike general conversational chat or math puzzle solving, file shunting (`bulk-reader` and `code-writer`) requires **structural code comprehension, AST extraction, and fast templating**:
+| Model | Quantization | VRAM Profile | Speed | Best For |
+| :--- | :--- | :--- | :--- | :--- |
+| **Qwen 2.5 Coder 14B** *(Recommended)* | `Q4_K_M` (~9.0 GB) | 100% GPU (40k ctx) | **~50–65 tok/s** | Best balance of speed, 40k context, and coding intelligence |
+| **Qwen 2.5 Coder 7B** | `Q4_K_M` (~4.3 GB) | 100% GPU (128k ctx) | **~75–90 tok/s** | Ultra-fast file inspection (`bulk-reader`) and simple boilerplate |
+| **Qwen 2.5 Coder 32B** | `IQ3_M` (~14.0 GB) | 100% GPU (8k–12k ctx) | **~28–35 tok/s** | Maximum coding intelligence (HumanEval+ 85.3%, Aider 72.1%) |
+| **Qwen 2.5 Coder 32B** | `Q4_K_M` (~19.9 GB) | Hybrid (~70% GPU / 30% CPU) | **~12–18 tok/s** | Systems with 64GB+ RAM wanting full 32B precision |
 
-1. **Zero Discarded Thinking Overhead**: Reasoning models (DeepSeek-R1, Qwen 3.8 Distill, etc.) generate 300–700 internal `<think>` tokens per request. In shunting, these reasoning tokens are stripped away before returning to the agent, meaning **70%–85% of GPU computation time is wasted generating discarded text**.
-2. **Sub-Second Latency**: A non-reasoning coder model starts streaming useful tokens in ~15–20 ms. For targeted questions, it responds in **< 1 second**, whereas a reasoning model forces a 6–10 second delay on every single tool call while it formulates its internal monologue.
-3. **Strict Formatting Compliance**: Instruction-tuned coder models strictly adhere to system prompts ("Output structured bullets only, no preambles"), ensuring clean, machine-parsable summaries.
-
-### Quantization Sizing Guidelines:
-
-| Hardware VRAM | Recommended Quantization | Model File | Generation Speed | VRAM Allocation |
-|---|---|---|---|---|
-| **≤ 16 GB VRAM** (RTX 5060 Ti, 4060 Ti, 3060, Apple Silicon 16GB) | **`Q4_K_M`** (Recommended) | `qwen2.5-coder-7b-instruct-q4_k_m.gguf` (~4.3 GB) | **~65–80 tokens/s** | ~6.5 GB (leaves 10 GB free for 32k KV cache) |
-| **> 16 GB VRAM** (RTX 3090, 4090, Apple Silicon 32GB+) | **`Q8_0`** | `qwen2.5-coder-7b-instruct-q8_0.gguf` (~8.1 GB) | **~45–50 tokens/s** | ~9.6 GB (full 8-bit uncompressed precision) |
+> **📊 Benchmark Note (32B @ IQ3_M vs 14B @ Q4_K_M)**:  
+> Empirical data from EvalPlus and the Aider Benchmark demonstrates that *parameter count dominates*: **Qwen 2.5 Coder 32B in `IQ3_M` outperforms 14B in `Q4_K_M`** (~85% vs ~81% on HumanEval+; ~72% vs ~69% on Aider), because modern importance-matrix (`imatrix`) quantization preserves crucial decision weights while fitting 100% into 16 GB VRAM.
 
 ---
 
 ### Option 1: `llama.cpp` (`llama-server`) — Recommended for Maximum Performance
 
 ```bash
-# For GPUs with <= 16 GB VRAM (RTX 5060 Ti / 4060 Ti / 3060 / Apple Silicon 16GB):
+# Recommended for RTX 5060 Ti / 4060 Ti (16 GB VRAM):
 llama-server \
-  -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M \
+  -hf Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M \
   --port 8080 \
   -ngl 99 \
-  -c 32768 \
-  --flash-attn \
-  --temp 0.2
-
-# For systems with > 16 GB VRAM (RTX 3090 / 4090 / Apple Silicon 32GB+):
-llama-server \
-  -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0 \
-  --port 8080 \
-  -ngl 99 \
-  -c 32768 \
-  --flash-attn \
+  --ctx-size 40960 \
+  --flash-attn on \
+  --cache-type-k q8_0 \
+  --cache-type-v q8_0 \
+  --batch-size 2048 \
+  --ubatch-size 512 \
   --temp 0.2
 ```
 
@@ -295,20 +423,20 @@ llama-server \
 
 ```bash
 # Pull model
-ollama run qwen2.5-coder:7b
+ollama run qwen2.5-coder:14b
 ```
 Update `~/.config/shunt-local/config.json`:
 ```json
 {
   "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
-  "model": "qwen2.5-coder:7b"
+  "model": "qwen2.5-coder:14b"
 }
 ```
 
 ### Option 3: vLLM (For High-Throughput Linux Workstations)
 
 ```bash
-vllm serve Qwen/Qwen2.5-Coder-7B-Instruct \
+vllm serve Qwen/Qwen2.5-Coder-14B-Instruct \
   --port 8080 \
   --max-model-len 32768
 ```
@@ -334,13 +462,21 @@ The cloud agent tries to execute `view_file("internal/billing/processor.go")` (2
 3. The local LLM parses the 2,100 lines in ~1.5s on GPU and returns 4 bullet points.
 4. The cloud agent continues solving the user's issue with 95% fewer tokens in context.
 
-### Scenario 2: Generating Boilerplate Tests
-Instead of paying cloud model rates to write 300 lines of repetitive test table cases:
-```text
-User: "Write unit tests for the validator functions in validation.go"
-Agent: Invokes code-writer with reference files.
-Local LLM: Generates tests/validator_test.go directly on disk.
-```
+### Scenario 2: Autonomous Subtask Worker with TDD
+Instead of burning cloud tokens generating 200 lines of implementation code:
+1. **Architect writes test**: Generates `tests/auth.test.ts` (fails initially).
+2. **Dispatches worker**:
+   ```bash
+   shunt-local exec \
+     --instruction "Implement validateToken method handling exp and nbf claims" \
+     --files "src/auth/jwt.ts" \
+     --read-files "src/auth/types.ts" \
+     --test-cmd "npm test -- tests/auth.test.ts" \
+     --max-retries 3
+   ```
+3. **Local LLM writes code**: Applies diff directly to disk.
+4. **Auto-correction loop**: Runs `npm test`. If a syntax error occurs, catches stderr, feeds it back to the local model, fixes the error, and passes green in 2 attempts.
+5. **Returns clean JSON**: Cloud agent receives only `{ status: "success", attempts: 2 }`.
 
 ---
 
@@ -357,10 +493,11 @@ Tests cover:
 - ✅ **Bash Command Hook**: Detection of `cat`, `head`, `tail`, `less`, `more`, pipe/redirect passthroughs.
 - ✅ **Config Resolution**: Precedence order between env vars, local files, and user configs.
 - ✅ **Transport Layer**: Payload formatting, mock HTTP handling, error extraction, and reasoning tag cleanup.
+- ✅ **Subtask Worker Suite**: TaskContract parsing, Context Packer, self-correction retry loop on test failure, and rollback execution.
 
 ```text
 ════════════════════════════════════════════════════════════════
-Total: 58 passed, 0 failed, 58 total
+Total: 65 passed, 0 failed, 65 total
 ════════════════════════════════════════════════════════════════
 ```
 

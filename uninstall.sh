@@ -12,12 +12,15 @@ BIN_DIR="${HOME}/.local/bin"
 echo "Uninstalling shunt-local..."
 
 # 1. Remove binaries
-rm -f "$BIN_DIR/bulk-read" "$BIN_DIR/code-write" "$BIN_DIR/shunt-update"
+rm -f "$BIN_DIR/bulk-read" "$BIN_DIR/code-write" "$BIN_DIR/shunt-update" "$BIN_DIR/shunt-local" "$BIN_DIR/task-exec"
 echo "Removed binaries from $BIN_DIR"
 
 # 2. Remove skills
-rm -rf "$SKILLS_DIR/bulk-reader" "$SKILLS_DIR/code-writer"
+rm -rf "$SKILLS_DIR/bulk-reader" "$SKILLS_DIR/code-writer" "$SKILLS_DIR/subtask-worker"
 echo "Removed skills from $SKILLS_DIR"
+
+# Clean state files
+rm -f "${HOME}/.config/shunt-local/disabled"
 
 # 2. Unregister from agy plugin if present
 if command -v agy >/dev/null 2>&1; then

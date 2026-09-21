@@ -12,6 +12,7 @@ FIXTURES="$SCRIPT_DIR/.fixtures"
 PASSED=0
 FAILED=0
 TOTAL=0
+export SHUNT_MOCK_ONLINE=1
 
 generate_fixture() {
   local path="$1" lines="$2"
