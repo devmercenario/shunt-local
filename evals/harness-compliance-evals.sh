@@ -111,6 +111,9 @@ check "guard-antigravity-write" "deny" "$(printf '%s' "$g" | jq -r '.decision //
 check "claude-write-matcher" "yes" \
   "$(jq -r '.hooks.PreToolUse[] | select(.matcher | test("Write")) | .matcher' "$PLUGIN_DIR/hooks/hooks.json" | grep -q . && echo yes || echo no)" \
   "Claude hook matches Write|Edit"
+check "claude-python-fallback" "yes" \
+  "$(jq -r '.hooks.PreToolUse[].hooks[].command' "$PLUGIN_DIR/hooks/hooks.json" | grep -q '|| python ' && echo yes || echo no)" \
+  "Claude hook falls back to python when python3 is missing"
 check "antigravity-write-matcher" "yes" \
   "$(grep -q 'write_to_file' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
   "installer registers Antigravity write matcher"

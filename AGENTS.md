@@ -55,7 +55,7 @@ scripts under `hooks/` are thin wrappers kept for compatibility.
 
 ## Contributing
 
-- Run the full suite before committing: `bash evals/run.sh` (279 checks; a few
+- Run the full suite before committing: `bash evals/run.sh` (280 checks; a few
   are environment-dependent — rtk and installed harnesses).
 - Keep every new control covered by an eval (`evals/*-evals.sh`).
 - Never weaken a default to make a test pass; add an opt-in env var instead.

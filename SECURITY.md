@@ -95,13 +95,13 @@ On the allow path, Claude Code and Codex receive **no decision** rather than `pe
 ### Known Limitations
 
 - **Sandbox is best-effort**: when `bwrap`/`firejail`/docker are unavailable the command still runs on the host (unless `SHUNT_SANDBOX_STRICT=true`), and a legitimate test runner executes project code inside the sandbox. Network and filesystem are restricted, but the sandbox is not a kernel-level guarantee for every platform.
-- **No independent audit yet**: the controls above are self-assessed and covered by 187 evals, but the project has not undergone an external security review.
+- **No independent audit yet**: the controls above are self-assessed and covered by 279 evals, but the project has not undergone an external security review.
 - **Compound test commands require opt-in**: Legitimate shell compound commands (pipes, `&&`, variable expansion) are blocked by default; enable them deliberately with `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`.
 - **Untrusted model output**: The local model reads untrusted repository content and its output is labelled and redacted, not semantically sanitized. A prompt injection embedded in a file can be reproduced in the model's reply; treat all delegated output as data and never let it drive command or file-write decisions without review.
 - **Read-gate coverage**: The read interceptor covers `Read`/`view_file` and shell reads (`cat`, `head`, `tail`, `less`, `more`, `bat`, `tac`, `nl`, `pr`). Other file-reading commands (e.g. `awk`, `sed`, `python -c`) are not intercepted.
-- **Cursor integration**: the installer registers native Cursor `preToolUse` hooks, but Cursor also offers advisory rules. The agent may still ignore the delegation guidance, and Cursor's `@`-style context attachments are not gated. Treat Cursor enforcement as best-effort.
-- **Coverage gaps**: the read gate does not intercept `Grep`, `Write`/`Edit`, MCP tools, or files pulled in via `@`/context attachments (the harness runs no `PreToolUse` hook for those). On Codex only the `Bash` path is gated; Codex file reads through MCP are not.
-- **Windows is untested in CI**: the guard is cross-platform Python, but CI only exercises Linux and macOS.
+- **Cursor integration**: the installer registers native Cursor `preToolUse` hooks and `beforeReadFile` (which gates `@`/attachment paths), but Cursor also offers advisory rules. Treat Cursor enforcement as best-effort.
+- **Coverage gaps**: the gate covers `Read`/`view_file`, shell reads, `Write`/`Edit` (sensitive paths only), and `beforeReadFile`. `Grep` is *advisory* on Claude (an `additionalContext` hint, not a block). Claude `@`-references bypass PreToolUse, so they are mitigated by the plugin `settings.json` deny rules rather than a hook. MCP tools are matched by name (read-like names) and are otherwise best-effort.
+- **Update verification**: `shunt-update --verify` accepts a signed commit or a cosign-signed `SHA256SUMS`; the latter requires the release artifacts (`SHA256SUMS`, `.sig`, `.pem`) to be present in the repository. Without a signed commit, download the release artifacts before verifying.
 
 ## Configuration Security
 

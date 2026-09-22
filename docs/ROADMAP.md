@@ -30,10 +30,13 @@ a regression eval. Items that need an owner action are marked **[owner]**.
 ## Phase 3 — `doctor` + packaging
 - [x] `shunt-local doctor` (`scripts/lib/doctor.sh`, `--json`)
 - [x] `evals/doctor-evals.sh`
-- [ ] Self-hosted Claude marketplace manifest **[owner: submit]**
+- [x] Self-hosted Claude marketplace manifest (`.claude-plugin/marketplace.json`)
+- [x] OpenCode npm package manifest (`plugins/opencode/package.json`)
+- [x] Installer lifecycle tests (`evals/install-evals.sh`)
+- [ ] Publish to the Claude community catalog **[owner: submit PR]**
 - [ ] Cursor directory submission **[owner]**
 - [ ] Codex plugin distribution **[owner]**
-- [ ] OpenCode npm package `opencode-shunt-local` **[owner: npm account]**
+- [ ] `npm publish opencode-shunt-local` **[owner: npm account]**
 
 ## Phase 4 — Independent audit  **[owner: engage firm]**
 - [x] Audit brief + SBOM + pinned commit (`docs/audit-brief.md`)

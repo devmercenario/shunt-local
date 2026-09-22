@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind read"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind read || python \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind read"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind bash"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind bash || python \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind bash"
           }
         ]
       },
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind write"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind write || python \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind write"
           }
         ]
       },
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind grep"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind grep || python \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind grep"
           }
         ]
       }
