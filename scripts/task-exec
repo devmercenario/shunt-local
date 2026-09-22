@@ -446,7 +446,7 @@ if [ "$apply_mode" != "auto" ]; then
       }
       stage_dir=$(mktemp -d)
       export SHUNT_STAGE_DIR="$stage_dir"
-      staged_out=$(apply_changes "$response" 2>/dev/null || true)
+      staged_out=$(apply_changes "$response" || true)
       unset SHUNT_STAGE_DIR
       diffs='[]'
       while IFS= read -r line; do
@@ -490,7 +490,7 @@ JSON
   }
 
   # Apply code changes to files
-  apply_output=$(apply_changes "$response" 2>/dev/null || true)
+  apply_output=$(apply_changes "$response" || true)
   while IFS= read -r line; do
     if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE|STAGED_WRITE):([^:]+) ]]; then
       fpath="${BASH_REMATCH[2]}"
