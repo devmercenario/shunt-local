@@ -14,6 +14,11 @@ trap 'rm -rf "$WORKDIR"' EXIT
 PASSED=0
 FAILED=0
 
+# Translate POSIX paths to native Windows paths when running under Git Bash.
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w -- "$1"; else printf '%s' "$1"; fi
+}
+
 check() {
   local name="$1" expected="$2" actual="$3" desc="$4"
   if [ "$expected" = "$actual" ]; then
@@ -85,12 +90,12 @@ MOCK
 {
   "task_id": "test-task-1",
   "instruction": "Implement add(a, b) function",
-  "target_files": ["$TARGET_FILE"],
-  "verification_command": "python3 -B $TEST_FILE"
+  "target_files": ["$(native "$TARGET_FILE")"],
+  "verification_command": "python3 -B $(native "$TEST_FILE")"
 }
 JSON
 
-  PATH="$mock_bin:$PATH" PYTHONPATH="$WORKDIR" "$PLUGIN_DIR/scripts/task-exec" --spec-file "$SPEC_FILE" > "$WORKDIR/out1.json"
+  PATH="$mock_bin:$PATH" PYTHONPATH="$(native "$WORKDIR")" "$PLUGIN_DIR/scripts/task-exec" --spec-file "$SPEC_FILE" > "$WORKDIR/out1.json"
 )
 
 status1=$(jq -r '.status' "$WORKDIR/out1.json")
@@ -166,10 +171,10 @@ fi
 MOCK
   chmod +x "$mock_bin/curl"
 
-  CALL_COUNT_FILE="$call_count_file" PATH="$mock_bin:$PATH" PYTHONPATH="$WORKDIR" "$PLUGIN_DIR/scripts/task-exec" \
+  CALL_COUNT_FILE="$call_count_file" PATH="$mock_bin:$PATH" PYTHONPATH="$(native "$WORKDIR")" "$PLUGIN_DIR/scripts/task-exec" \
     --instruction "Implement multiply(a, b)" \
-    --files "$TARGET_FILE" \
-    --test-cmd "python3 -B $TEST_FILE" \
+    --files "$(native "$TARGET_FILE")" \
+    --test-cmd "python3 -B $(native "$TEST_FILE")" \
     --max-retries 3 > "$WORKDIR/out2.json"
 )
 

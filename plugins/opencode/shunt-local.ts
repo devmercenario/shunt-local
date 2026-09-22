@@ -16,7 +16,11 @@ interface ToolExecuteOutput {
   args: any;
 }
 
-const RESTRICTED_SYSTEM_DIRS = ['/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin'];
+const RESTRICTED_SYSTEM_DIRS = [
+  '/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin',
+  // macOS resolves these through /private (e.g. /etc -> /private/etc).
+  '/private/etc', '/private/var', '/private/tmp', '/private/root',
+];
 
 const SENSITIVE_NAMES = new Set([
   '.git', '.github', '.gitlab', '.circleci', '.husky', '.githooks',

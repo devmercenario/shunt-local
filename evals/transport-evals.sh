@@ -67,7 +67,7 @@ case "$sent_sys" in
   *)                         check "bulk-reader-system-prompt" "y" "n" "sets bulk-reader system prompt" ;;
 esac
 
-sent_user=$(jq -r '.messages[1].content' "$CAPTURED_PAYLOAD")
+sent_user=$(jq -r '.messages[1].content' "$CAPTURED_PAYLOAD" | tr -d '\r')
 check "message-content-preserved" "Line 1
 Line 2" "$sent_user" "preserves user message verbatim"
 

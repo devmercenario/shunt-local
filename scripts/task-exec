@@ -317,13 +317,13 @@ jq -n \
 # Helper to apply generated changes to target files
 apply_changes() {
   local raw_response="$1"
-  python3 - << 'PYEOF' "$raw_response" "${target_files[@]}"
+  SHUNT_LIB_DIR="$(shunt_to_native "$SHUNT_LIB_DIR")" python3 - << 'PYEOF' "$raw_response" "${target_files[@]}"
 import sys, os, re, hashlib
 sys.path.insert(0, os.environ.get('SHUNT_LIB_DIR', ''))
 import paths
 
 response = sys.argv[1]
-targets = sys.argv[2:]
+targets = [paths.to_native(t) for t in sys.argv[2:]]
 
 # C3: Security — all writes restricted to the current working directory (symlinks
 # resolved). Declared --files targets are NOT implicitly trusted, because they are
@@ -343,7 +343,7 @@ def is_safe_target(t):
 
 # When SHUNT_STAGE_DIR is set, writes are staged there instead of applied, so
 # the caller can review a diff before anything touches the working tree.
-STAGE_DIR = os.environ.get('SHUNT_STAGE_DIR', '')
+STAGE_DIR = paths.to_native(os.environ.get('SHUNT_STAGE_DIR', ''))
 STAGE_ONLY = bool(STAGE_DIR)
 
 def emit_write(target, content):

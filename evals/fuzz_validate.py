@@ -49,18 +49,19 @@ CURATED_OK = [
 
 
 def bash_validate(snippet, inputs, env=None):
-    # Pass payloads NUL-delimited so newlines/tabs survive, and force UTF-8 so
-    # Windows does not decode the output as UTF-16.
+    # Base64-encode each payload so newlines/tabs survive the line-oriented
+    # protocol; force UTF-8 so Windows does not decode the output as UTF-16.
+    encoded = [base64.b64encode(x.encode()).decode() for x in inputs]
     script = (
         f'. "{LIB}" >/dev/null 2>&1; '
-        "while IFS= read -r -d '' line; do "
+        "while IFS= read -r b64; do "
+        'line=$(printf %s "$b64" | base64 -d); '
         f'if {snippet} >/dev/null 2>&1; then printf "A\\n"; else printf "R\\n"; fi; '
         "done"
     )
-    data = "".join(x + "\0" for x in inputs)
     proc = subprocess.run(
         ["bash", "-c", script],
-        input=data,
+        input="\n".join(encoded) + "\n",
         capture_output=True,
         text=True,
         encoding="utf-8",
