@@ -141,6 +141,7 @@ if [ -n "$target" ]; then
   tmp_out="${target}.shunt-tmp.$$"
   printf '%s\n' "$clean" > "$tmp_out"
   mv -f "$tmp_out" "$target"
+  shunt_audit code-write status=written target="$target" reference="$reference"
   echo "Wrote $(wc -l < "$target" | tr -d ' ') lines to $target" >&2
 else
   printf '%s\n' "$clean"

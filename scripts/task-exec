@@ -595,6 +595,10 @@ if [ "$success" = "true" ]; then
   # Build modified files JSON array
   mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
 
+  shunt_audit task-exec status=success task_id="$task_id" attempts="$attempt" \
+    sandbox="$sandbox_backend" apply_mode="$apply_mode" \
+    files="$(printf '%s ' "${modified_files[@]}")"
+
   jq -n \
     --arg status "success" \
     --arg task_id "$task_id" \
@@ -627,6 +631,8 @@ else
   fi
 
   mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
+  shunt_audit task-exec status=failed task_id="$task_id" attempts="$max_retries" \
+    sandbox="$sandbox_backend" apply_mode="$apply_mode" rolled_back="$rolled_back"
   combined_err="$last_stderr"
   [ -z "$combined_err" ] && combined_err="$last_stdout"
 
