@@ -55,7 +55,7 @@ Cloud Agent (untrusted input via prompt injection)
 12. **Read Confinement**: `bulk-read`, `code-write` and `task-exec` refuse to read files outside the working directory (`SHUNT_ALLOW_READS_OUTSIDE_CWD=true` opts out).
 13. **Secret Redaction**: Every outbound payload is scrubbed of private keys, cloud/API tokens and secret assignments (`scripts/lib/redact.py`). `SHUNT_BLOCK_ON_SECRETS=true` refuses the request instead of sending it.
 14. **Key Sources**: `SHUNT_API_KEY_CMD` (e.g. a keyring lookup) or `SHUNT_API_KEY_FILE` resolve the key when `SHUNT_API_KEY` is unset, so secrets need not be stored in `config.json`.
-15. **Audit Log**: `task-exec` and `code-write` append JSONL records (tool, status, files, sandbox, apply-mode) to `~/.config/shunt-local/audit.log` (0600).
+15. **Audit Log**: `task-exec` and `code-write` append JSONL records (tool, status, files, sandbox, apply-mode) to `~/.config/shunt-local/audit.log` (0600). Summarize with `shunt-local stats`.
 16. **Verifiable Updates**: `shunt-update --verify` (or `SHUNT_UPDATE_REQUIRE_SIGNATURE=true`) refuses to apply a fetched ref unless it carries a valid commit signature or a cosign-signed `SHA256SUMS`. Releases are built and signed in CI.
 17. **Cross-Platform Guard**: the PreToolUse guard is `hooks/shunt_guard.py` (Python 3), so the same gate runs on Windows, macOS and Linux. The bash scripts under `hooks/` are thin wrappers.
 

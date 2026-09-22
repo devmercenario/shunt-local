@@ -294,6 +294,12 @@ shunt-local hook run_command on|off
 
 # Inspect full status tree
 shunt-local status
+
+# Diagnose the installation (deps, config, sandbox, hooks)
+shunt-local doctor
+
+# Summarize the audit log (delegations, status, sandbox, rollbacks)
+shunt-local stats
 ```
 
 ### Autonomous Subtask Worker (`shunt-local exec`)
