@@ -2,6 +2,7 @@
 # Evals for scripts/task-exec: TaskContract parsing, context packing, self-correction loop, and rollback.
 
 set -euo pipefail
+export SHUNT_ASSUME_YES=true
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

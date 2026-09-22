@@ -16,12 +16,16 @@ MODE_NAME="code-writer"
 spec=""
 reference=""
 target=""
+dry_run=false
+assume_yes=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --spec)      spec="$2"; shift 2 ;;
     --reference) reference="$2"; shift 2 ;;
     --target)    target="$2"; shift 2 ;;
+    --dry-run)   dry_run=true; shift ;;
+    --yes|-y)    assume_yes=true; shift ;;
     *)           shift ;;
   esac
 done
@@ -54,6 +58,26 @@ shunt_invoke "$MODE_NAME" "$message_file" > "$answer_file" || exit 1
 clean=$(sed '/^```/d' "$answer_file")
 
 if [ -n "$target" ]; then
+  # Never write without explicit approval: --dry-run prints the result, and a
+  # non-interactive caller must pass --yes (or set SHUNT_ASSUME_YES=true).
+  if [ "$dry_run" = "true" ]; then
+    printf '%s\n' "$clean"
+    echo "[shunt-local: dry-run; no file written]" >&2
+    exit 0
+  fi
+  if [ "$assume_yes" != "true" ] && [ "${SHUNT_ASSUME_YES:-}" != "true" ]; then
+    if [ ! -t 0 ]; then
+      printf '%s\n' "$clean"
+      echo "[shunt-local: refused to write '$target' without confirmation; re-run with --yes after the user approves]" >&2
+      exit 0
+    fi
+    printf 'Write %s? [y/N] ' "$target" >&2
+    read -r _answer || _answer=""
+    case "$_answer" in
+      y|Y|yes|YES) ;;
+      *) echo "[shunt-local: write aborted]" >&2; exit 0 ;;
+    esac
+  fi
   # Security: resolve the parent directory physically (so symlinked dirs cannot
   # escape the working directory) and refuse to write through a symlink target.
   real_cwd=$(pwd -P)

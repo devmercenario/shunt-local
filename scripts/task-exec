@@ -27,6 +27,8 @@ spec_file=""
 allow_unsafe=false
 sandbox_override=""
 no_sandbox=false
+apply_mode=""
+assume_yes=false
 
 usage() {
   cat << 'EOF'
@@ -45,6 +47,9 @@ Options:
   --spec-file <file>           Path to TaskContract JSON/YAML file
   --sandbox <backend>          Sandbox backend: auto|bwrap|firejail|docker|podman|none
   --no-sandbox                 Disable sandboxing (run the test command directly on the host)
+  --apply-mode <mode>          auto | confirm | dry-run (default: confirm)
+  --dry-run                    Generate changes but do not write or run anything
+  --yes                        Approve the plan non-interactively (enables auto apply)
   -h, --help                   Show this help message
 
 Examples:
@@ -88,6 +93,9 @@ while [[ $# -gt 0 ]]; do
     --spec-file) spec_file="$2"; shift 2 ;;
     --sandbox) sandbox_override="$2"; shift 2 ;;
     --no-sandbox) no_sandbox=true; shift ;;
+    --apply-mode) apply_mode="$2"; shift 2 ;;
+    --dry-run) apply_mode="dry-run"; shift ;;
+    --yes|-y) assume_yes=true; shift ;;
     --allow-unsafe) allow_unsafe=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *)
@@ -186,6 +194,27 @@ if [ "$no_sandbox" = "true" ]; then
 fi
 sandbox_backend=$(shunt_sandbox_backend 2>/dev/null || echo none)
 
+# Apply-mode resolution: never auto-apply unless explicitly requested.
+[ -z "$apply_mode" ] && apply_mode="${SHUNT_APPLY_MODE:-}"
+if [ -z "$apply_mode" ]; then
+  if [ "$assume_yes" = "true" ] || [ "${SHUNT_ASSUME_YES:-}" = "true" ]; then
+    apply_mode="auto"
+  else
+    apply_mode="confirm"
+  fi
+fi
+case "$apply_mode" in
+  auto|confirm|dry-run) ;;
+  *) echo "Error: invalid --apply-mode '$apply_mode' (use auto|confirm|dry-run)." >&2; exit 1 ;;
+esac
+targets_json=$(printf '%s\n' "${target_files[@]}" | jq -R . | jq -s .)
+emit_plan() {
+  jq -cn --arg instruction "$instruction" --argjson files "$targets_json" \
+    --arg test "$verification_command" --arg rollback "$rollback_command" \
+    --arg sandbox "$sandbox_backend" --arg mode "$apply_mode" \
+    '{instruction:$instruction, files:$files, test_cmd:$test, rollback_cmd:$rollback, sandbox:$sandbox, apply_mode:$mode}'
+}
+
 # C1: Validate commands unless --allow-unsafe is set.
 # A CLI flag alone is not enough to disable validation — a prompt-injected agent
 # could pass --allow-unsafe itself. It must be enabled in the operator's environment.
@@ -283,7 +312,7 @@ jq -n \
 apply_changes() {
   local raw_response="$1"
   python3 - << 'PYEOF' "$raw_response" "${target_files[@]}"
-import sys, os, re
+import sys, os, re, hashlib
 
 response = sys.argv[1]
 targets = sys.argv[2:]
@@ -344,6 +373,25 @@ def is_safe_target(t):
         return False
     return True
 
+# When SHUNT_STAGE_DIR is set, writes are staged there instead of applied, so
+# the caller can review a diff before anything touches the working tree.
+STAGE_DIR = os.environ.get('SHUNT_STAGE_DIR', '')
+STAGE_ONLY = bool(STAGE_DIR)
+
+def emit_write(target, content):
+    if STAGE_ONLY:
+        os.makedirs(STAGE_DIR, exist_ok=True)
+        digest = hashlib.sha1(target.encode('utf-8', 'surrogatepass')).hexdigest()[:10]
+        staged = os.path.join(STAGE_DIR, digest + '-' + os.path.basename(target))
+        with open(staged, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"STAGED_WRITE:{target}:{staged}")
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(target)), exist_ok=True)
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"WROTE_FILE:{target}")
+
 # 1. Look for SEARCH/REPLACE blocks first
 search_replace_pattern = re.compile(r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE', re.DOTALL)
 matches = list(search_replace_pattern.finditer(response))
@@ -361,9 +409,7 @@ if matches and len(targets) == 1:
                 content = content.replace(search_block, replace_block, 1)
                 applied += 1
         if applied > 0:
-            with open(target_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f"APPLIED_DIFF:{target_path}:{applied}")
+            emit_write(target_path, content)
             sys.exit(0)
 
 # 2. Look for code fences with target filename in fence info or header
@@ -389,11 +435,8 @@ for m in fence_matches:
         if not is_safe_target(matched_target):
             print(f"SECURITY_ERROR: Target path escapes working directory: {matched_target}", file=sys.stderr)
             continue
-        os.makedirs(os.path.dirname(os.path.abspath(matched_target)), exist_ok=True)
-        with open(matched_target, 'w', encoding='utf-8') as f:
-            f.write(code + '\n')
+        emit_write(matched_target, code + '\n')
         handled.add(matched_target)
-        print(f"WROTE_FILE:{matched_target}")
 
 # 3. Fallback: if single target and response has a generic code block without filename
 if not handled and len(targets) == 1:
@@ -401,12 +444,61 @@ if not handled and len(targets) == 1:
     if raw_blocks:
         t = targets[0]
         if is_safe_target(t):
-            os.makedirs(os.path.dirname(os.path.abspath(t)), exist_ok=True)
-            with open(t, 'w', encoding='utf-8') as f:
-                f.write(raw_blocks[0] + '\n')
-            print(f"WROTE_FILE:{t}")
+            emit_write(t, raw_blocks[0] + '\n')
 PYEOF
 }
+
+# 5. Plan approval / dry-run gate. Nothing is written and no command runs until
+# the operator approves (--yes / SHUNT_ASSUME_YES=true) or we are in auto mode.
+if [ "$apply_mode" != "auto" ]; then
+  case "$apply_mode" in
+    confirm)
+      if [ -t 0 ]; then
+        echo "shunt-local exec plan:" >&2
+        emit_plan >&2
+        printf 'Proceed? [y/N] ' >&2
+        read -r _answer || _answer=""
+        case "$_answer" in
+          y|Y|yes|YES) ;;
+          *)
+            jq -cn --argjson plan "$(emit_plan)" '{status:"aborted", reason:"user declined the plan", plan:$plan}'
+            exit 0
+            ;;
+        esac
+      else
+        jq -cn --argjson plan "$(emit_plan)" \
+          '{status:"needs_confirmation", message:"Review the plan, then re-run with --yes (or SHUNT_ASSUME_YES=true) once the user approves.", plan:$plan}'
+        exit 0
+      fi
+      ;;
+    dry-run)
+      response=$(shunt_invoke_messages "$messages_file") || {
+        jq -cn --argjson plan "$(emit_plan)" '{status:"error", error:"local LLM invocation failed during dry-run", plan:$plan}'
+        exit 1
+      }
+      stage_dir=$(mktemp -d)
+      export SHUNT_STAGE_DIR="$stage_dir"
+      staged_out=$(apply_changes "$response" 2>/dev/null || true)
+      unset SHUNT_STAGE_DIR
+      diffs='[]'
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        tgt="${line#STAGED_WRITE:}"; tgt="${tgt%%:*}"
+        staged="${line##*:}"
+        if [ -f "$tgt" ]; then
+          d=$(diff -u "$tgt" "$staged" 2>/dev/null | tail -n +3 || true)
+        else
+          d=$(cat "$staged" 2>/dev/null || true)
+        fi
+        diffs=$(jq -c --arg t "$tgt" --arg d "$d" '. + [{target:$t, diff:$d}]' <<< "$diffs")
+      done <<< "$(printf '%s\n' "$staged_out" | grep '^STAGED_WRITE:' || true)"
+      rm -rf "$stage_dir"
+      jq -cn --argjson plan "$(emit_plan)" --argjson diffs "$diffs" \
+        '{status:"dry_run", message:"No files were written and no command was run.", proposed:$diffs, plan:$plan}'
+      exit 0
+      ;;
+  esac
+fi
 
 # 5. Capability C: Self-Correction Loop
 attempt=1
@@ -432,7 +524,7 @@ JSON
   # Apply code changes to files
   apply_output=$(apply_changes "$response" 2>/dev/null || true)
   while IFS= read -r line; do
-    if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE):([^:]+) ]]; then
+    if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE|STAGED_WRITE):([^:]+) ]]; then
       fpath="${BASH_REMATCH[2]}"
       [[ ! " ${modified_files[*]} " =~ " ${fpath} " ]] && modified_files+=("$fpath")
     fi
