@@ -13,11 +13,23 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# On Windows Git Bash the ~/.local/bin wrappers may be copies, not symlinks,
+# which resolves REPO_DIR to ~/.local. Fall back to the recorded install root
+# so updates always target the real snapshot/clone directory.
+if [ ! -f "$REPO_DIR/scripts/lib/register.sh" ] && [ -f "${HOME}/.config/shunt-local/install_root" ]; then
+  recorded=$(cat "${HOME}/.config/shunt-local/install_root" 2>/dev/null || true)
+  if [ -n "$recorded" ] && [ -f "$recorded/scripts/lib/register.sh" ]; then
+    REPO_DIR="$recorded"
+  fi
+fi
+
 # Shared helpers: remote allowlist + signature verification + registration.
-# shellcheck source=lib/update-verify.sh
-. "$SCRIPT_DIR/lib/update-verify.sh"
-# shellcheck source=lib/register.sh
-. "$SCRIPT_DIR/lib/register.sh"
+# Source from the resolved repository (not the wrapper's own directory), so the
+# Windows copy-fallback above still finds them.
+# shellcheck source=scripts/lib/update-verify.sh
+. "$REPO_DIR/scripts/lib/update-verify.sh"
+# shellcheck source=scripts/lib/register.sh
+. "$REPO_DIR/scripts/lib/register.sh"
 
 DO_PULL=true
 DO_APPLY=false

@@ -123,6 +123,13 @@ shunt_trust_repo() {
   local repo="$1"
   local trusted_file="${HOME}/.gemini/trustedFolders.json"
   local install_root_file="${HOME}/.config/shunt-local/install_root"
+
+  # Always record the install root (update/uninstall resolve it from here),
+  # even when trust registration below is skipped.
+  mkdir -p "$(dirname "$install_root_file")"
+  printf '%s' "$repo" > "$install_root_file"
+  chmod 600 "$install_root_file" 2>/dev/null || true
+
   [ -d "${HOME}/.gemini" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
@@ -142,9 +149,6 @@ shunt_trust_repo() {
   local tmp
   tmp=$(umask 077 && mktemp) || return 1
   jq --arg dir "$repo" '. + {($dir): "TRUST_FOLDER"}' "$trusted_file" > "$tmp" && mv "$tmp" "$trusted_file"
-  mkdir -p "$(dirname "$install_root_file")"
-  printf '%s' "$repo" > "$install_root_file"
-  chmod 600 "$install_root_file" 2>/dev/null || true
   echo "Ensured $repo is trusted in $trusted_file"
 }
 

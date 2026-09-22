@@ -169,6 +169,11 @@ rm -rf "$WORKDIR/v2tree/.git"
 printf 'v2\n' > "$WORKDIR/v2tree/.install-sync-marker"
 tar -C "$WORKDIR/v2tree" -czf "$V2_SNAPSHOT" .
 export FAKE_SNAPSHOT="$V2_SNAPSHOT"
+# Replace the symlinked wrapper with a real copy so the update exercises the
+# install_root fallback (Windows Git Bash links wrappers as copies, not symlinks).
+rm -f "$BOOT_HOME/.local/bin/shunt-update"
+cp "$WORKDIR/installed/scripts/shunt-update" "$BOOT_HOME/.local/bin/shunt-update"
+chmod +x "$BOOT_HOME/.local/bin/shunt-update"
 set +e
 HOME="$BOOT_HOME" PATH="$WORKDIR/bin:$PATH" \
   "$BOOT_HOME/.local/bin/shunt-update" --yes > "$WORKDIR/curl-update.log" 2>&1
