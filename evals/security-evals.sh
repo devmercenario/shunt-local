@@ -162,8 +162,9 @@ check "localhost-allowed" "allowed" "$(scheme_check 'http://127.0.0.1:8080/v1/ch
 
 # ---- 4. shunt-update trusted-remote hostname allowlist ----
 HOSTREPO="$WORKDIR/hostrepo"
-mkdir -p "$HOSTREPO/scripts" "$HOSTREPO/plugins/opencode"
+mkdir -p "$HOSTREPO/scripts/lib" "$HOSTREPO/plugins/opencode"
 cp "$PLUGIN_DIR/scripts/shunt-update" "$HOSTREPO/scripts/shunt-update"
+cp "$PLUGIN_DIR/scripts/lib/update-verify.sh" "$HOSTREPO/scripts/lib/update-verify.sh"
 cp "$PLUGIN_DIR/plugins/opencode/shunt-local.ts" "$HOSTREPO/plugins/opencode/shunt-local.ts"
 (
   cd "$HOSTREPO"

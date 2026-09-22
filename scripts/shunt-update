@@ -20,28 +20,14 @@ HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
 TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
 INSTALL_ROOT_FILE="${HOME}/.config/shunt-local/install_root"
 
-# Accept only the well-known public code hosts for a pull. Compared by exact
-# hostname, so https://github.com.evil.example/... is correctly rejected.
-shunt_remote_is_trusted() {
-  local url="$1" host=""
-  if [[ "$url" =~ ^[^@/]+@([^:/]+): ]]; then
-    host="${BASH_REMATCH[1]}"
-  elif [[ "$url" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*:// ]]; then
-    host="${url#*://}"
-    host="${host%%/*}"
-    host="${host##*@}"
-    host="${host%%:*}"
-  fi
-  host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
-  case "$host" in
-    github.com|gitlab.com|bitbucket.org) return 0 ;;
-  esac
-  return 1
-}
+# Shared, unit-tested helpers (remote allowlist + update verification).
+# shellcheck source=lib/update-verify.sh
+. "$SCRIPT_DIR/lib/update-verify.sh"
 
 DO_PULL=true
 DO_APPLY=false
 FETCHED=false
+REQUIRE_VERIFY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,11 +43,16 @@ while [[ $# -gt 0 ]]; do
       DO_APPLY=true
       shift
       ;;
+    --verify)
+      REQUIRE_VERIFY=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: shunt-update [--pull | --no-pull] [--yes]"
+      echo "Usage: shunt-update [--pull | --no-pull] [--yes] [--verify]"
       echo "Updates shunt-local hooks, skills, and binaries from the repository."
       echo ""
       echo "  --yes        Apply fetched upstream changes (default is a dry-run)."
+      echo "  --verify     Require a signed commit (or cosign-signed SHA256SUMS) before applying."
       echo "  --no-pull    Skip the remote fetch entirely; re-install from current files."
       exit 0
       ;;
@@ -72,6 +63,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "Updating shunt-local..."
+
+# Allow the operator to require signature verification via the environment.
+if [ "${SHUNT_UPDATE_REQUIRE_SIGNATURE:-}" = "true" ]; then
+  REQUIRE_VERIFY=true
+fi
 
 # 1. Fetch and pull latest changes from remote repository (supply-chain hardened).
 # The remote must be a well-known code host (unless explicitly opted in), and
@@ -98,6 +94,12 @@ if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
       echo "Fetching latest changes from origin/${current_branch}..."
       git -C "$REPO_DIR" fetch origin "$current_branch" && FETCHED=true || echo "Warning: fetch failed; continuing with current repository files."
       if [ "$FETCHED" = "true" ]; then
+        if [ "$REQUIRE_VERIFY" = "true" ]; then
+          if ! shunt_verify_update "$REPO_DIR" "origin/$current_branch"; then
+            echo "🔒 Refusing to apply an unverified update. Re-run without --verify only if you trust the remote." >&2
+            exit 1
+          fi
+        fi
         if [ "$DO_APPLY" = "true" ]; then
           git -C "$REPO_DIR" pull --ff-only origin "$current_branch" || echo "Warning: git pull was not fast-forwarded or local changes exist. Continuing with current repository files."
         else

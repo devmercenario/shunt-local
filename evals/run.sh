@@ -154,6 +154,7 @@ run_external_suite "$SCRIPT_DIR/transport-evals.sh" "Transport suite (scripts/li
 run_external_suite "$SCRIPT_DIR/task-exec-evals.sh" "Subtask worker suite (scripts/task-exec self-correction & rollback)"
 run_external_suite "$SCRIPT_DIR/security-evals.sh" "Security suite (command validation, write confinement, endpoint & supply chain)"
 run_external_suite "$SCRIPT_DIR/sandbox-evals.sh" "Sandbox suite (bwrap/firejail/docker command isolation)"
+run_external_suite "$SCRIPT_DIR/update-verify-evals.sh" "Update verification suite (trusted host + signatures)"
 run_external_suite "$SCRIPT_DIR/harness-compliance-evals.sh" "Harness compliance suite (Antigravity, Claude Code, Codex, Cursor)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 
