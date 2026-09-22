@@ -94,6 +94,43 @@ check "guard-cursor" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')"
 g=$(guard_run "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$WORKDIR/small.txt\"}}")
 check "guard-allow-silent" "" "$g" "python guard allow emits nothing"
 
+guard_write() { ( cd "$WORKDIR/work" && printf '%s' "$1" | HOME="$WORKDIR/home" python3 "$GUARD" --kind write "${@:2}" 2>/dev/null ); }
+mkdir -p "$WORKDIR/work/.github/workflows"
+g=$(guard_write "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$WORKDIR/work/.github/workflows/ci.yml\"}}")
+check "guard-write-sensitive" "deny" "$(printf '%s' "$g" | jq -r '.hookSpecificOutput.permissionDecision // empty')" "write to CI file is denied"
+g=$(guard_write "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$WORKDIR/work/src/ok.py\"}}")
+check "guard-write-normal" "" "$g" "normal write is allowed"
+g=$(guard_write "{\"turn_id\":\"t\",\"tool_name\":\"apply_patch\",\"tool_input\":{\"command\":\"*** Begin Patch\\n*** Update File: .git/config\\n+ x\\n*** End Patch\"}}")
+check "guard-codex-patch" "deny" "$(printf '%s' "$g" | jq -r '.hookSpecificOutput.permissionDecision // empty')" "apply_patch to .git is denied"
+g=$(guard_write "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$WORKDIR/work/package.json\"}}" --harness cursor)
+check "guard-cursor-write" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')" "Cursor write to package.json is denied"
+g=$(guard_write "{\"toolCall\":{\"name\":\"write_to_file\",\"args\":{\"TargetFile\":\"$WORKDIR/work/.env\"}}}" --harness antigravity)
+check "guard-antigravity-write" "deny" "$(printf '%s' "$g" | jq -r '.decision // empty')" "Antigravity write to .env is denied"
+
+check "claude-write-matcher" "yes" \
+  "$(jq -r '.hooks.PreToolUse[] | select(.matcher | test("Write")) | .matcher' "$PLUGIN_DIR/hooks/hooks.json" | grep -q . && echo yes || echo no)" \
+  "Claude hook matches Write|Edit"
+check "antigravity-write-matcher" "yes" \
+  "$(grep -q 'write_to_file' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "installer registers Antigravity write matcher"
+
+# ---- Sensitive reads + Cursor beforeReadFile ----
+printf 'SECRET=1\n' > "$WORKDIR/work/.env"
+mkdir -p "$WORKDIR/home/.ssh"; printf 'KEY\n' > "$WORKDIR/home/.ssh/id_rsa"
+g=$(guard_run "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$WORKDIR/work/.env\"}}")
+check "guard-sensitive-read" "deny" "$(printf '%s' "$g" | jq -r '.hookSpecificOutput.permissionDecision // empty')" "reading .env is denied"
+g=$(guard_run "{\"tool_name\":\"mcp__filesystem__read_file\",\"tool_input\":{\"path\":\"$WORKDIR/home/.ssh/id_rsa\"}}")
+check "guard-mcp-read" "deny" "$(printf '%s' "$g" | jq -r '.hookSpecificOutput.permissionDecision // empty')" "MCP read of a private key is denied"
+br=$(python3 -c "import json; print(json.dumps({'file_path':'$WORKDIR/large.txt','content':'x','attachments':[{'type':'file','file_path':'$WORKDIR/work/.env'}]}))")
+g=$(guard_run "$br" --harness cursor --kind read)
+check "guard-before-readfile" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')" "Cursor beforeReadFile blocks sensitive attachments"
+check "cursor-before-readfile-registered" "yes" \
+  "$(grep -q 'beforeReadFile' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "installer registers Cursor beforeReadFile"
+check "claude-deny-rules" "true" \
+  "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_DIR/settings.json" 2>/dev/null)" \
+  "plugin settings.json denies reading secrets (@-refs bypass hooks)"
+
 # ---- Manifests / configuration ----
 check "claude-matcher-powershell" "Bash|PowerShell" \
   "$(jq -r '.hooks.PreToolUse[] | select(.matcher | test("PowerShell")) | .matcher' "$PLUGIN_DIR/hooks/hooks.json")" \

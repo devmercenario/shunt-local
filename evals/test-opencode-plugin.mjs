@@ -128,6 +128,32 @@ async function run() {
     check("security-restricted-path", true, isSecurityErr, "Denies access to restricted system directory");
   }
 
+  // Test 9: Write to a protected path should be blocked
+  process.env.SHUNT_ALLOW_WRITES_OUTSIDE_CWD = 'true';
+  try {
+    await hookFn({ tool: "write", sessionID: "s1", callID: "c9" }, { args: { filePath: path.join(tmpDir, '.env') } });
+    check("write-sensitive", "blocked", "allowed", ".env write should be denied");
+  } catch (err) {
+    check("write-sensitive", true, err.message.includes("blocked this write"), "Denies write to .env");
+  }
+
+  // Test 10: Normal write should pass
+  try {
+    await hookFn({ tool: "write", sessionID: "s1", callID: "c10" }, { args: { filePath: path.join(tmpDir, 'module.py') } });
+    check("write-normal", "allowed", "allowed", "Normal write passes through");
+  } catch (err) {
+    check("write-normal", "allowed", "blocked", err.message);
+  }
+
+  // Test 11: Write outside the project should be blocked without opt-in
+  delete process.env.SHUNT_ALLOW_WRITES_OUTSIDE_CWD;
+  try {
+    await hookFn({ tool: "write", sessionID: "s1", callID: "c11" }, { args: { filePath: path.join(tmpDir, 'outside.py') } });
+    check("write-outside", "blocked", "allowed", "Out-of-project write should be denied");
+  } catch (err) {
+    check("write-outside", true, err.message.includes("blocked this write"), "Denies out-of-project write");
+  }
+
   // Cleanup
   fs.rmSync(tmpDir, { recursive: true, force: true });
 

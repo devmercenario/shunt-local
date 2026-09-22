@@ -169,6 +169,7 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
   jq \
     --arg size_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind read" \
     --arg bash_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind bash" \
+    --arg write_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind write" \
     '. + {
       "shunt-local": {
         "PreToolUse": [
@@ -187,6 +188,15 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
               {
                 "type": "command",
                 "command": $bash_hook
+              }
+            ]
+          },
+          {
+            "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
+            "hooks": [
+              {
+                "type": "command",
+                "command": $write_hook
               }
             ]
           }
@@ -224,13 +234,17 @@ if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
     jq \
       --arg read_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind read" \
       --arg shell_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind bash" \
+      --arg write_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind write" \
       '.version = 1
        | .hooks = (.hooks // {})
        | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("shunt_guard.py") | not)))
        | .hooks.preToolUse += [
            {"matcher": "Read", "command": $read_hook},
-           {"matcher": "Shell", "command": $shell_hook}
-         ]' \
+           {"matcher": "Shell", "command": $shell_hook},
+           {"matcher": "Write", "command": $write_hook}
+         ]
+       | .hooks.beforeReadFile = ((.hooks.beforeReadFile // []) | map(select((.command // "") | test("shunt_guard.py") | not)))
+       | .hooks.beforeReadFile += [ {"matcher": "Read", "command": $read_hook} ]' \
       "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
     chmod 600 "$CURSOR_HOOKS_FILE" 2>/dev/null || true
     echo "Updated Cursor hooks in $CURSOR_HOOKS_FILE"

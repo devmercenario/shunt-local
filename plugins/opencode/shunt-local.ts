@@ -18,6 +18,34 @@ interface ToolExecuteOutput {
 
 const RESTRICTED_SYSTEM_DIRS = ['/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin'];
 
+const SENSITIVE_NAMES = new Set([
+  '.git', '.github', '.gitlab', '.circleci', '.husky', '.githooks',
+  '.env', '.env.local', '.env.production', '.npmrc', '.pypirc', '.netrc',
+  '.gitmodules', '.gitattributes', '.bashrc', '.profile', '.zshrc',
+  'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock',
+  'pnpm-lock.yaml', 'Makefile', 'makefile', 'GNUmakefile', 'Dockerfile',
+  'docker-compose.yml', 'docker-compose.yaml', 'Gemfile', 'Gemfile.lock',
+  'Cargo.toml', 'Cargo.lock', 'go.mod', 'go.sum', 'pyproject.toml',
+  'setup.py', 'setup.cfg', 'pytest.ini', 'tox.ini', 'requirements.txt',
+  'poetry.lock', 'shunt.config.json', 'install.sh', 'shunt-update',
+  'authorized_keys', 'id_rsa', 'id_ed25519', 'credentials',
+]);
+
+function isSafeWritePath(filePath: string): boolean {
+  const resolved = path.resolve(filePath);
+  const home = process.env.HOME || os.homedir();
+  if (resolved.startsWith(home + path.sep + '.')) return false;
+  const allowOutside = process.env.SHUNT_ALLOW_WRITES_OUTSIDE_CWD === 'true';
+  const rel = path.relative(process.cwd(), resolved);
+  const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  if (!inside && !allowOutside) return false;
+  if (process.env.SHUNT_ALLOW_SENSITIVE_WRITES !== 'true') {
+    if (SENSITIVE_NAMES.has(path.basename(resolved))) return false;
+    if (rel.split(path.sep).some((part) => SENSITIVE_NAMES.has(part))) return false;
+  }
+  return true;
+}
+
 function isSafePath(filePath: string): boolean {
   try {
     const resolved = fs.realpathSync(path.resolve(filePath));
@@ -210,8 +238,7 @@ export const ShuntLocalOpenCodePlugin = async (_ctx: OpenCodePluginContext) => {
       }
 
       // Intercept 'bash' / 'shell'
-      if (toolName === 'bash' || toolName === 'shell') {
-        const args = output?.args;
+      if (toolName === 'bash' || toolName === 'shell') {        const args = output?.args;
         if (!args || typeof args !== 'object') return;
 
         const cmd = String(args.command ?? '').trim();
@@ -258,6 +285,20 @@ export const ShuntLocalOpenCodePlugin = async (_ctx: OpenCodePluginContext) => {
           `Intercepted bash read. Delegate to the local LLM using the /bulk-reader skill or CLI command:\n` +
           `  bulk-read "${targetFile}" "<your query>"`
         );
+      }
+
+      // Intercept 'write' / 'edit' / 'multiedit' — block protected paths.
+      if (toolName === 'write' || toolName === 'edit' || toolName === 'multiedit') {
+        const args = output?.args;
+        if (!args || typeof args !== 'object') return;
+        const filePath = String(args.filePath || args.file_path || args.path || args.file || '');
+        if (!filePath) return;
+        if (!isSafeWritePath(filePath)) {
+          throw new Error(
+            `shunt-local blocked this write: '${filePath}' is a protected or out-of-project path.\n` +
+            `Set SHUNT_ALLOW_SENSITIVE_WRITES=true or SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true if this is intentional.`
+          );
+        }
       }
     },
   };

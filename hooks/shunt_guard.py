@@ -14,15 +14,25 @@ Usage: shunt_guard.py [--harness auto|antigravity|claude|cursor] [--kind auto|re
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
+# Share the write-safety policy with the CLI.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "lib"))
+try:
+    import paths as shunt_paths
+except Exception:  # pragma: no cover - guard still works without the module
+    shunt_paths = None
+
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1/chat/completions"
 DEFAULT_MIN_LINES = 350
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 READ_VERBS = ("cat", "head", "tail", "less", "more", "bat", "tac", "nl", "pr")
+WRITE_TOOLS = {"write", "edit", "multiedit", "apply_patch", "write_to_file",
+               "replace_file_content", "multi_replace_file_content", "notebook_edit"}
 
 
 def load_config():
@@ -175,7 +185,57 @@ def infer_kind(name):
         return "read"
     if lowered in ("bash", "shell", "run_command", "powershell", "exec", "exec_command", "terminal"):
         return "bash"
+    if lowered in WRITE_TOOLS:
+        return "write"
+    if lowered.startswith("mcp__") and re.search(r"(read|view|cat|get|fetch|list)", lowered):
+        return "read"
     return "other"
+
+
+def before_read_paths(payload):
+    """Cursor beforeReadFile: the file plus any prompt attachments."""
+    out = []
+    if isinstance(payload.get("file_path"), str):
+        out.append(payload["file_path"])
+    for att in payload.get("attachments") or []:
+        if isinstance(att, dict) and isinstance(att.get("file_path"), str):
+            out.append(att["file_path"])
+    return out
+
+
+def is_sensitive_read(path_str):
+    if shunt_paths is None:
+        return False
+    abs_p = shunt_paths.realpath(path_str)
+    home = os.path.expanduser("~")
+    if abs_p.startswith(home + os.sep + "."):
+        return True
+    for part in abs_p.split(os.sep):
+        if part in shunt_paths.SENSITIVE_NAMES:
+            return True
+    return False
+
+
+
+def extract_write_paths(name, args):
+    """Return the file paths a write tool intends to touch."""
+    patch = str(args.get("command") or "") if "command" in args else ""
+    if str(name).lower() == "apply_patch" or "***" in patch:
+        found = set()
+        for line in patch.splitlines():
+            match = re.match(r"\*\*\* (?:Add|Update|Delete) File: (.+)", line)
+            if match:
+                found.add(match.group(1).strip())
+            elif line.startswith("+++ ") or line.startswith("--- "):
+                candidate = line[4:].strip()
+                if candidate and candidate != "/dev/null":
+                    found.add(re.sub(r"^[ab]/", "", candidate))
+        if found:
+            return sorted(found)
+    for key in ("file_path", "filePath", "path", "TargetFile", "AbsolutePath", "absolutePath", "target_file"):
+        if args.get(key):
+            return [str(args[key])]
+    return []
 
 
 def read_path_from_args(args):
@@ -245,9 +305,31 @@ def main():
         return allow()
 
     if kind == "read":
+        br_paths = before_read_paths(payload)
+        if br_paths and not isinstance(payload.get("tool_input"), dict):
+            if os.environ.get("SHUNT_ALLOW_SENSITIVE_READS") != "true":
+                for p in br_paths:
+                    if is_sensitive_read(p):
+                        emit(harness, "deny",
+                             f"shunt-local blocked reading protected file '{p}'. "
+                             "Set SHUNT_ALLOW_SENSITIVE_READS=true to allow.")
+                        return 0
+            content = payload.get("content")
+            lines = content.count("\n") if isinstance(content, str) else count_lines(br_paths[0])
+            if lines > cfg["min_lines"] and is_online(cfg):
+                emit(harness, "deny",
+                     f"File is {lines} lines (threshold: {cfg['min_lines']}). Use the /bulk-reader "
+                     "skill to delegate this read to your local LLM instead of reading it directly.")
+                return 0
+            return allow()
         path = read_path_from_args(args)
         if not path or offset_from_args(args) or not os.path.isfile(path):
             return allow()
+        if os.environ.get("SHUNT_ALLOW_SENSITIVE_READS") != "true" and is_sensitive_read(path):
+            emit(harness, "deny",
+                 f"shunt-local blocked reading protected file '{path}'. "
+                 "Set SHUNT_ALLOW_SENSITIVE_READS=true to allow.")
+            return 0
         lines = count_lines(path)
         if lines <= cfg["min_lines"]:
             return allow()
@@ -258,6 +340,31 @@ def main():
                   "exact content for editing, re-read with a line range for just the section you need.")
         emit(harness, "deny", reason)
         return 0
+
+    if kind == "write":
+        targets = extract_write_paths(name, args)
+        if not targets or shunt_paths is None:
+            return allow()
+        allow_outside = os.environ.get("SHUNT_ALLOW_WRITES_OUTSIDE_CWD") == "true"
+        allow_sensitive = os.environ.get("SHUNT_ALLOW_SENSITIVE_WRITES") == "true"
+        cwd = os.path.realpath(os.getcwd())
+        home = os.path.expanduser("~")
+        allowed = {shunt_paths.realpath(t) for t in targets}
+        for target in targets:
+            if not shunt_paths.is_safe_write(target, cwd=cwd, home=home,
+                                             allow_outside=allow_outside,
+                                             allow_sensitive=allow_sensitive,
+                                             allowed_targets=allowed):
+                reason = ("shunt-local blocked this write: "
+                          + shunt_paths.explain(target, cwd=cwd, home=home,
+                                                allow_outside=allow_outside,
+                                                allow_sensitive=allow_sensitive,
+                                                allowed_targets=allowed)
+                          + ". Set SHUNT_ALLOW_SENSITIVE_WRITES=true or "
+                            "SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true if this is intentional.")
+                emit(harness, "deny", reason)
+                return 0
+        return allow()
 
     # kind == "bash"
     command = str(args.get("command") or args.get("CommandLine") or "")

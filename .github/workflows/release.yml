@@ -25,6 +25,14 @@ jobs:
 
       - uses: sigstore/cosign-installer@v3
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: shunt-local.spdx.json
+          artifact-name: shunt-local-sbom
+
       - name: Sign checksums (keyless)
         run: |
           cosign sign-blob --yes \
@@ -40,4 +48,5 @@ jobs:
             SHA256SUMS
             SHA256SUMS.sig
             SHA256SUMS.pem
+            shunt-local.spdx.json
           generate_release_notes: true

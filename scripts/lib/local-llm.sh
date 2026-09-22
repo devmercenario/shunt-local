@@ -11,6 +11,7 @@ DEFAULT_TIMEOUT_SECONDS=180
 
 # Directory this library lives in (for helper scripts such as redact.py).
 SHUNT_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+export SHUNT_LIB_DIR
 
 shunt_load_config() {
   local cfg_file=""
