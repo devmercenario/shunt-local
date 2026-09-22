@@ -97,14 +97,14 @@ repo content --untrusted--> local LLM --untrusted output--> cloud agent
 
 ## Technical debt / known smells
 
-- **Sandbox re-probes**: `shunt_sandbox_backend` runs a probe on each call; the
-  `$(...)` call sites run in subshells so a simple cache does not stick. Low
-  impact (a few probes per task).
 - **`SHUNT_API_KEY_CMD` uses `eval`**: intentional (keyring command) and purely
   operator-controlled; treated with the same trust as `SHUNT_ALLOW_UNSAFE`.
 - **Guard config loader is duplicated** with `config.sh` in Python, because the
   guard must be cross-platform and not depend on bash.
 - **OpenCode sensitive-name list is mirrored** in TypeScript; a packaging eval
   fails if it drifts from `sensitive-names.txt`.
-- **`task-exec` is a ~600-line monolith** (plan → context → apply → verify →
-  rollback); it could be split into phases if it grows further.
+- **`install.ps1` is only parsed in CI** (PowerShell parser), not executed; its
+  registration logic is not covered by a functional test.
+- **Harness e2e is shallow** (`evals/harness-e2e.sh`): it runs the installed
+  CLI's version and checks the registration artifact, but does not drive an
+  agent session.

@@ -7,6 +7,7 @@
 # SHUNT_SANDBOX_STRICT   = true to refuse to run when no sandbox is available
 SHUNT_SANDBOX_BACKEND=""
 SHUNT_SANDBOX_ARGV=()
+SHUNT_SANDBOX_SELECTED=""
 
 shunt_sandbox_probe() {
   case "$1" in
@@ -20,20 +21,23 @@ shunt_sandbox_probe() {
   esac
 }
 
-shunt_sandbox_backend() {
+# Resolve the backend once per process and remember it in SHUNT_SANDBOX_SELECTED
+# (avoids re-probing bwrap on every command).
+shunt_sandbox_select() {
+  [ -n "${SHUNT_SANDBOX_SELECTED:-}" ] && return 0
   local wanted="${SHUNT_SANDBOX:-auto}"
   case "$wanted" in
-    none) printf 'none'; return 0 ;;
+    none) SHUNT_SANDBOX_SELECTED="none"; return 0 ;;
     bwrap|firejail|docker|podman)
-      if shunt_sandbox_probe "$wanted"; then printf '%s' "$wanted"; return 0; fi
-      printf 'none'; return 0
+      if shunt_sandbox_probe "$wanted"; then SHUNT_SANDBOX_SELECTED="$wanted"; else SHUNT_SANDBOX_SELECTED="none"; fi
+      return 0
       ;;
     auto)
       local b
       for b in bwrap firejail; do
-        if shunt_sandbox_probe "$b"; then printf '%s' "$b"; return 0; fi
+        if shunt_sandbox_probe "$b"; then SHUNT_SANDBOX_SELECTED="$b"; return 0; fi
       done
-      printf 'none'; return 0
+      SHUNT_SANDBOX_SELECTED="none"; return 0
       ;;
     *)
       echo "Error: invalid SHUNT_SANDBOX='$wanted' (use auto|bwrap|firejail|docker|podman|none)." >&2
@@ -42,10 +46,15 @@ shunt_sandbox_backend() {
   esac
 }
 
+shunt_sandbox_backend() {
+  shunt_sandbox_select || return 1
+  printf '%s' "$SHUNT_SANDBOX_SELECTED"
+}
+
 # Wrap an argv into SHUNT_SANDBOX_ARGV. Usage: shunt_sandbox_wrap <argv...>
 shunt_sandbox_wrap() {
-  local backend
-  backend=$(shunt_sandbox_backend) || return 1
+  shunt_sandbox_select || return 1
+  local backend="$SHUNT_SANDBOX_SELECTED"
   SHUNT_SANDBOX_BACKEND="$backend"
   local cwd
   cwd="${SHUNT_SANDBOX_CWD:-$(pwd -P)}"

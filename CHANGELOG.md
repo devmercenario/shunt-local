@@ -5,6 +5,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Split `local-llm.sh` into `common/config/validate/sandbox/audit/http/hooks`
+  modules behind a thin loader.
+- Extract the subtask worker helpers into `scripts/lib/task.sh` and the code
+  writer into `scripts/lib/apply_changes.py` (`task-exec` is now orchestration).
+- Cache the sandbox backend selection per process; validate `install.ps1` in CI;
+  add a shallow harness e2e smoke (`evals/harness-e2e.sh`).
+
 ## [0.2.0] - 2026-09-22
 
 ### Security

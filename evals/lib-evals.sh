@@ -62,6 +62,36 @@ check "public-surface" "" "$funcs" "loader exposes every public function"
 libdir=$(HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; printf '%s' \"\$SHUNT_LIB_DIR\"" 2>/dev/null)
 check "lib-dir" "$PLUGIN_DIR/scripts/lib" "$libdir" "SHUNT_LIB_DIR is the lib directory"
 
+# 4. task.sh exposes the worker functions.
+taskfuncs=$(HOME="$WORKDIR/home" bash -c '
+  . "'"$LIB"'" >/dev/null 2>&1
+  . "'"$PLUGIN_DIR"'/scripts/lib/task.sh" >/dev/null 2>&1
+  for f in shunt_task_usage shunt_task_prepare_context shunt_task_emit_success shunt_task_emit_failure; do
+    declare -F "$f" >/dev/null || echo "MISSING:$f"
+  done
+' 2>/dev/null)
+check "task-surface" "" "$taskfuncs" "task.sh exposes the worker functions"
+
+# 5. apply_changes.py is a standalone, parseable module.
+ac_py="$PLUGIN_DIR/scripts/lib/apply_changes.py"
+ac_lib="$PLUGIN_DIR/scripts/lib"
+if command -v cygpath >/dev/null 2>&1; then
+  ac_py=$(cygpath -w "$ac_py" | tr -d '\r')
+  ac_lib=$(cygpath -w "$ac_lib" | tr -d '\r')
+fi
+check "apply-changes-parses" "yes" "$(python3 -c 'import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())' "$ac_py" >/dev/null 2>&1 && echo yes || echo no)" "apply_changes.py parses"
+
+# 6. apply_changes.py stages writes in dry-run mode and refuses sensitive paths.
+mkdir -p "$WORKDIR/ac" "$WORKDIR/ac/.github" "$WORKDIR/stage"
+( cd "$WORKDIR/ac" && SHUNT_LIB_DIR="$ac_lib" SHUNT_STAGE_DIR="$WORKDIR/stage" python3 "$ac_py" '```out.py
+print(1)
+```' "$WORKDIR/ac/out.py" ) > "$WORKDIR/ac.out" 2>/dev/null
+check "apply-changes-stage" "yes" "$(grep -q '^STAGED_WRITE:' "$WORKDIR/ac.out" && echo yes || echo no)" "apply_changes stages in dry-run mode"
+( cd "$WORKDIR/ac" && SHUNT_LIB_DIR="$ac_lib" SHUNT_STAGE_DIR="$WORKDIR/stage" python3 "$ac_py" '```ci.yml
+x
+```' "$WORKDIR/ac/.github/ci.yml" ) > "$WORKDIR/ac2.out" 2>/dev/null || true
+check "apply-changes-sensitive" "no" "$(grep -q '^STAGED_WRITE:.*ci.yml' "$WORKDIR/ac2.out" && echo yes || echo no)" "apply_changes refuses sensitive targets"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

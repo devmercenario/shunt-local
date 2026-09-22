@@ -51,6 +51,15 @@ jobs:
           chmod +x "$HOME/.local/bin/python3"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Validate PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+          Write-Host "install.ps1 parses"
+
       - name: Run eval suite
         run: bash evals/run.sh
 
