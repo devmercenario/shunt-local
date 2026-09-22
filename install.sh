@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/register.sh
 . "$SCRIPT_DIR/scripts/lib/register.sh"
+# shellcheck source=scripts/lib/update-verify.sh
+. "$SCRIPT_DIR/scripts/lib/update-verify.sh"
 
 CONFIG_DIR="${HOME}/.config/shunt-local"
 BIN_DIR="${HOME}/.local/bin"
@@ -22,7 +24,10 @@ for cmd in jq curl python3; do
   fi
 done
 
-# 2. User configuration directory
+# 2. Sync the install clone with origin/main (opt out: SHUNT_NO_PULL=1).
+shunt_sync_install_source "$SCRIPT_DIR"
+
+# 3. User configuration directory
 mkdir -p "$CONFIG_DIR"
 chmod 700 "$CONFIG_DIR" 2>/dev/null || true
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
@@ -33,15 +38,15 @@ else
 fi
 chmod 600 "$CONFIG_DIR/config.json" 2>/dev/null || true
 
-# 3. Binaries and skills
+# 4. Binaries and skills
 shunt_link_binaries "$SCRIPT_DIR"
 shunt_copy_skills "$SCRIPT_DIR"
 
-# 4. Antigravity trust + hooks (only when the repository is safely owned)
+# 5. Antigravity trust + hooks (only when the repository is safely owned)
 shunt_trust_repo "$SCRIPT_DIR"
 shunt_register_antigravity_hooks "$SCRIPT_DIR"
 
-# 5. Harness plugin registration
+# 6. Harness plugin registration
 if command -v agy >/dev/null 2>&1; then
   echo "Registering with Antigravity CLI (agy)..."
   agy plugin install "$SCRIPT_DIR" 2>/dev/null || true
@@ -53,7 +58,7 @@ fi
 shunt_install_opencode_plugin "$SCRIPT_DIR"
 shunt_register_cursor_hooks "$SCRIPT_DIR"
 
-# 6. PATH hint
+# 7. PATH hint
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)

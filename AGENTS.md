@@ -64,6 +64,9 @@ scripts under `hooks/` are thin wrappers kept for compatibility.
   harness's plugin directory); if you suspect a drift, `git fetch origin && git diff origin/main`.
 - When the local tree disagrees with `origin/main`, reconcile against the remote
   before making changes, and never hand-edit an installed copy to "fix" it here.
+- `install.sh` installs from the clone it is run from, and first fast-forwards
+  that clone to `origin/main` (opt out with `SHUNT_NO_PULL=1`). Install from a
+  dedicated clone, not the dev checkout.
 
 ## Contributing
 

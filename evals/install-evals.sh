@@ -37,7 +37,7 @@ echo "Installer Evals"
 echo "────────────────────────────────────────────────────────────────"
 
 set +e
-HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" > "$WORKDIR/install.log" 2>&1
+HOME="$HOME_DIR" SHUNT_NO_PULL=1 PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" > "$WORKDIR/install.log" 2>&1
 rc=$?
 set -e
 check "install-exit" "0" "$rc" "install.sh completes"
@@ -69,7 +69,7 @@ check "skill-installed" "yes" \
   "$([ -f "$HOME_DIR/.agents/skills/bulk-reader/SKILL.md" ] && echo yes || echo no)" "skills copied"
 
 # Idempotency: a second install must not duplicate Cursor entries.
-HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" >/dev/null 2>&1
+HOME="$HOME_DIR" SHUNT_NO_PULL=1 PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" >/dev/null 2>&1
 check "idempotent-cursor" "4" "$(jq -r '[.hooks.preToolUse[]] | length' "$CURSOR")" "re-install does not duplicate hooks"
 
 # shunt-update shares register.sh; --no-pull must re-register the same configs.
@@ -86,6 +86,40 @@ check "uninstall-gemini" "null" "$(jq -r '."shunt-local" // "null"' "$GEMINI" 2>
 check "uninstall-cursor" "0" "$(jq -r '[.hooks.preToolUse[]?] | length' "$CURSOR" 2>/dev/null)" "Cursor shunt hooks removed"
 check "uninstall-opencode" "no" \
   "$([ -f "$HOME_DIR/.config/opencode/plugins/shunt-local.ts" ] && echo yes || echo no)" "OpenCode plugin removed"
+
+# install.sh syncs the install clone with origin/main before installing.
+BARE="$WORKDIR/upstream.git"
+git init --bare -b main "$BARE" >/dev/null 2>&1
+
+# Seed a local "origin" from the current working tree so the clone carries a
+# real install.sh (uncommitted edits included) but tracks a local remote.
+SEED="$WORKDIR/seed"
+cp -r "$PLUGIN_DIR" "$SEED"
+rm -rf "$SEED/.git"
+git -C "$SEED" init -b main >/dev/null 2>&1
+git -C "$SEED" config user.email "test@example.com"
+git -C "$SEED" config user.name "Test"
+git -C "$SEED" add -A
+git -C "$SEED" commit -m "seed" >/dev/null 2>&1
+git -C "$SEED" remote add origin "$BARE"
+git -C "$SEED" push -u origin main >/dev/null 2>&1
+
+CLONE="$WORKDIR/clone"
+git clone "$BARE" "$CLONE" >/dev/null 2>&1
+
+# Advance origin/main after cloning, so a plain install would install stale code.
+printf 'v2\n' > "$SEED/.install-sync-marker"
+git -C "$SEED" add .install-sync-marker
+git -C "$SEED" commit -m "v2" >/dev/null 2>&1
+git -C "$SEED" push origin main >/dev/null 2>&1
+V2_SHA=$(git -C "$SEED" rev-parse HEAD)
+
+# The local bare remote is intentionally not in the trusted-host allowlist;
+# the trust gate itself is unit-tested in update-verify-evals.sh.
+HOME="$HOME_DIR" SHUNT_ALLOW_UNTRUSTED_REMOTE=true PATH="$WORKDIR/bin:$PATH" \
+  bash "$CLONE/install.sh" >/dev/null 2>&1
+check "install-sync-main" "$V2_SHA" "$(git -C "$CLONE" rev-parse HEAD)" \
+  "install.sh fast-forwards the clone to origin/main"
 
 echo ""
 echo "## $PASSED $FAILED"

@@ -4,6 +4,46 @@
 # Keeping this in one place avoids the two scripts drifting apart (they used to
 # duplicate the bin/skill/hook registration verbatim).
 
+# Sync the install clone with origin/main before installing, so install.sh
+# always reflects the latest remote code. Non-git, offline, or locally-modified
+# sources fall back to the current files with a warning. Opt out with
+# SHUNT_NO_PULL=1. Refuses to pull from an untrusted remote unless
+# SHUNT_ALLOW_UNTRUSTED_REMOTE=true (reuses update-verify.sh when sourced).
+shunt_sync_install_source() {
+  local repo="$1"
+  [ "${SHUNT_NO_PULL:-}" = "1" ] && return 0
+  command -v git >/dev/null 2>&1 || return 0
+  [ -d "$repo/.git" ] || return 0
+  git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local remote_url branch
+  remote_url=$(git -C "$repo" remote get-url origin 2>/dev/null || echo "")
+  [ -n "$remote_url" ] || return 0
+
+  if declare -F shunt_remote_is_trusted >/dev/null 2>&1; then
+    if ! shunt_remote_is_trusted "$remote_url"; then
+      if [ "${SHUNT_ALLOW_UNTRUSTED_REMOTE:-}" != "true" ]; then
+        echo "🔒 Refusing to pull from untrusted remote: $remote_url" >&2
+        echo "   Set SHUNT_ALLOW_UNTRUSTED_REMOTE=true to allow this remote." >&2
+        return 0
+      fi
+    fi
+  fi
+
+  branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ "$branch" != "main" ] && git -C "$repo" show-ref --verify --quiet refs/remotes/origin/main; then
+    branch=main
+  fi
+  case "$branch" in ""|"HEAD") branch=main ;; esac
+
+  echo "Syncing install source with origin/${branch}..."
+  if git -C "$repo" pull --ff-only --quiet origin "$branch" 2>/dev/null; then
+    echo "Install source is up to date with origin/${branch}."
+  else
+    echo "⚠️  Could not update to origin/${branch} (offline or local changes); installing from current files." >&2
+  fi
+}
+
 # Link the CLI binaries into ~/.local/bin (symlink, falling back to a copy).
 shunt_link_binaries() {
   local repo="$1"

@@ -97,7 +97,7 @@ cat <<'HOOKS_EOF' > "$HOME_DIR/.gemini/config/hooks.json"
 HOOKS_EOF
 
 # Run install.sh.
-HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" >/dev/null 2>&1
+HOME="$HOME_DIR" SHUNT_NO_PULL=1 PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" >/dev/null 2>&1
 GEMINI_HOOKS="$HOME_DIR/.gemini/config/hooks.json"
 
 check "preserve-ai-memory-pre" "ai-memory-hook" \
