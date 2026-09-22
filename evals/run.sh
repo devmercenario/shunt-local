@@ -11,7 +11,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/.fixtures"
 # Native path for hook input (Windows Python cannot open MSYS-style /d/... paths).
 if command -v cygpath >/dev/null 2>&1; then
-  FIXTURES_INPUT="$(cygpath -m "$FIXTURES")"
+  FIXTURES_INPUT="$(cygpath -m "$FIXTURES" | tr -d '\r')"
 else
   FIXTURES_INPUT="$FIXTURES"
 fi

@@ -16,7 +16,7 @@ FAILED=0
 
 # Translate POSIX paths to native Windows paths when running under Git Bash.
 native() {
-  if command -v cygpath >/dev/null 2>&1; then cygpath -w -- "$1"; else printf '%s' "$1"; fi
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w -- "$1" | tr -d '\r'; else printf '%s' "$1"; fi
 }
 
 check() {

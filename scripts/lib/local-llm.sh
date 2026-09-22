@@ -264,7 +264,7 @@ shunt_preflight() {
 shunt_to_native() {
   local p="$1"
   if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w -- "$p" 2>/dev/null || printf '%s' "$p"
+    cygpath -w -- "$p" 2>/dev/null | tr -d '\r' || printf '%s' "$p"
   else
     printf '%s' "$p"
   fi
@@ -273,7 +273,7 @@ shunt_to_native() {
 shunt_to_posix() {
   local p="$1"
   if command -v cygpath >/dev/null 2>&1; then
-    cygpath -u -- "$p" 2>/dev/null || printf '%s' "$p"
+    cygpath -u -- "$p" 2>/dev/null | tr -d '\r' || printf '%s' "$p"
   else
     printf '%s' "$p"
   fi
@@ -282,7 +282,7 @@ shunt_to_posix() {
 shunt_realpath() {
   local p
   p=$(shunt_to_native "$1")
-  p=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null || printf '%s' "$p")
+  p=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null | tr -d '\r' || printf '%s' "$p")
   shunt_to_posix "$p"
 }
 
