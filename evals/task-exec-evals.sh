@@ -90,6 +90,11 @@ MOCK
     '{task_id:"test-task-1", instruction:"Implement add(a, b) function", target_files:[$tf], verification_command:$tc}' > "$SPEC_FILE"
 
   PATH="$mock_bin:$PATH" PYTHONPATH="$(native "$WORKDIR")" "$PLUGIN_DIR/scripts/task-exec" --spec-file "$SPEC_FILE" > "$WORKDIR/out1.json"
+  s=$(jq -r '.status // "?"' "$WORKDIR/out1.json" 2>/dev/null || echo '?')
+  if [ "$s" != "success" ]; then
+    echo "DEBUG out1: $(cat "$WORKDIR/out1.json")" >&2
+    echo "DEBUG target exists: $([ -f "$TARGET_FILE" ] && echo yes || echo no)" >&2
+  fi
 ) || true
 
 status1=$(jq -r '.status' "$WORKDIR/out1.json")
