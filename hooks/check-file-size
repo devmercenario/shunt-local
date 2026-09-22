@@ -37,8 +37,8 @@ else
   block_decision="block"
 fi
 
-# Allow targeted reads (offset, limit, StartLine, or EndLine set)
-if [ -n "$offset" ] || [ -n "$limit" ]; then
+# Allow targeted reads (offset/limit set to meaningful non-zero values)
+if { [ -n "$offset" ] && [ "$offset" != "0" ]; } || { [ -n "$limit" ] && [ "$limit" != "0" ]; }; then
   echo '{"decision": "allow"}'
   exit 0
 fi

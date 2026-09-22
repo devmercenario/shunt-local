@@ -103,16 +103,16 @@
       "name": "offset-zero",
       "input": { "tool_input": { "file_path": "{{FIXTURES}}/large.txt", "offset": 0 } },
       "fixture": { "lines": 1200 },
-      "expected_decision": "allow",
-      "reason": "offset:0 treated as targeted — known bypass, documenting behavior"
+      "expected_decision": "block",
+      "reason": "offset:0 is not a meaningful targeted read — should block large files"
     },
     {
       "id": 14,
       "name": "limit-zero",
       "input": { "tool_input": { "file_path": "{{FIXTURES}}/large.txt", "limit": 0 } },
       "fixture": { "lines": 1200 },
-      "expected_decision": "allow",
-      "reason": "limit:0 treated as targeted — known bypass, documenting behavior"
+      "expected_decision": "block",
+      "reason": "limit:0 is not a meaningful targeted read — should block large files"
     },
     {
       "id": 15,

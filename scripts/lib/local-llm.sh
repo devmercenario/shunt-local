@@ -56,6 +56,44 @@ shunt_load_config() {
 
 shunt_load_config
 
+# Security: validate endpoint to prevent config hijacking (C2, H1, H2)
+shunt_validate_endpoint() {
+  local endpoint="$1"
+  local host=""
+
+  # Extract host from URL
+  host=$(echo "$endpoint" | sed -E 's|^https?://||' | sed -E 's|[:/].*||')
+
+  # Localhost endpoints are always safe
+  case "$host" in
+    127.0.0.1|localhost|'[::1]'|::1|0.0.0.0) return 0 ;;
+  esac
+
+  # Non-localhost endpoint over plain HTTP — data exfiltration risk
+  if [[ "$endpoint" == http://* ]]; then
+    if [ "${SHUNT_ALLOW_REMOTE:-}" != "true" ]; then
+      echo "⚠️  SECURITY: Non-localhost endpoint '$endpoint' uses plain HTTP." >&2
+      echo "   Your source code and prompts would be transmitted in plain text." >&2
+      echo "   Set SHUNT_ALLOW_REMOTE=true to allow remote endpoints." >&2
+      return 1
+    fi
+  fi
+
+  # API key over plain HTTP to non-localhost — credential leak
+  if [ -n "${SHUNT_API_KEY:-}" ] && [[ "$endpoint" == http://* ]]; then
+    echo "🔒 BLOCKED: API key configured with plain HTTP non-localhost endpoint." >&2
+    echo "   Your API key would be transmitted in plain text. Use HTTPS." >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# Warn at load time if CWD config file is detected (potential poisoning)
+if [ -f "./shunt.config.json" ]; then
+  echo "⚠️  shunt-local: Loading project config from ./shunt.config.json" >&2
+fi
+
 shunt_is_enabled() {
   local disabled_file="${HOME}/.config/shunt-local/disabled"
   if [ -f "$disabled_file" ]; then
@@ -123,7 +161,7 @@ shunt_preflight() {
 }
 
 shunt_is_online() {
-  [ "${SHUNT_MOCK_ONLINE:-}" = "1" ] && return 0
+  [ "${__SHUNT_TEST_MOCK_ONLINE:-}" = "1" ] && return 0
   local base="${SHUNT_ENDPOINT%/}"
   local health_url
   if [[ "$base" == */v1/chat/completions ]]; then
@@ -159,6 +197,9 @@ shunt_invoke_payload() {
   local payload_file="$1"
   shunt_tmpfile response_file || return 1
   shunt_tmpfile stderr_file || return 1
+
+  # Security: validate endpoint before sending any data
+  shunt_validate_endpoint "$SHUNT_ENDPOINT" || return 1
 
   local auth_header=()
   if [ -n "$SHUNT_API_KEY" ]; then

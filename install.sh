@@ -60,7 +60,7 @@ if [ -d "${HOME}/.gemini" ] && command -v jq >/dev/null 2>&1; then
   if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
     echo "{}" > "$TRUSTED_FOLDERS_FILE"
   fi
-  tmp_tf=$(mktemp)
+  tmp_tf=$(umask 077 && mktemp) || exit 1
   jq --arg dir "$SCRIPT_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
   echo "Ensured $SCRIPT_DIR is trusted in $TRUSTED_FOLDERS_FILE"
 fi
@@ -78,7 +78,7 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
     echo "{}" > "$HOOKS_FILE"
   fi
 
-  tmp_hooks=$(mktemp)
+  tmp_hooks=$(umask 077 && mktemp) || exit 1
   jq \
     --arg size_hook "$SCRIPT_DIR/hooks/check-file-size" \
     --arg bash_hook "$SCRIPT_DIR/hooks/check-bash-read" \

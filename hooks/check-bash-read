@@ -44,10 +44,19 @@ echo "$command" | grep -qE '>' && { echo '{"decision": "allow"}'; exit 0; }
 
 # Extract file path from read commands, stripping flags (e.g. cat -n, head -100)
 file_path=""
-if echo "$command" | grep -qE '^(cat|head|tail|less|more) '; then
-  args=$(echo "$command" | sed -E 's/^(cat|head|tail|less|more) +//')
+if echo "$command" | grep -qE '^(cat|head|tail|less|more|bat|tac|nl|pr) '; then
+  cmd_verb=$(echo "$command" | awk '{print $1}')
+  args=$(echo "$command" | sed -E 's/^(cat|head|tail|less|more|bat|tac|nl|pr) +//')
+  skip_next=false
   for arg in $args; do
+    if [ "$skip_next" = "true" ]; then skip_next=false; continue; fi
     case "$arg" in
+      -n|-c|--lines|--bytes)
+        # Only head/tail take a separate value after -n/-c (e.g. head -n 5 file)
+        # For cat, -n is standalone (cat -n file)
+        case "$cmd_verb" in head|tail) skip_next=true ;; esac
+        continue
+        ;;
       -*) continue ;;
       *)  file_path=$(echo "$arg" | tr -d '"'"'"); break ;;
     esac

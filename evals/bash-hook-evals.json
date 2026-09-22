@@ -134,9 +134,9 @@
       "id": 17,
       "name": "head-n-space-count",
       "input": { "tool_input": { "command": "head -n 5 {{FIXTURES}}/large.txt" } },
-      "fixture": null,
-      "expected_decision": "allow",
-      "reason": "Parser bug: -n and 5 are separate args, 5 is treated as file path — file '5' won't exist so allow"
+      "fixture": { "lines": 800 },
+      "expected_decision": "block",
+      "reason": "Parser correctly skips -n value arg and finds actual file path — large file blocked"
     }
   ]
 }

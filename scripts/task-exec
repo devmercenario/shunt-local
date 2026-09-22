@@ -24,6 +24,7 @@ max_retries=3
 output_mode="auto"
 spec_json=""
 spec_file=""
+allow_unsafe=false
 
 usage() {
   cat << 'EOF'
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --output-mode) output_mode="$2"; shift 2 ;;
     --spec) spec_json="$2"; shift 2 ;;
     --spec-file) spec_file="$2"; shift 2 ;;
+    --allow-unsafe) allow_unsafe=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -134,6 +136,60 @@ fi
 
 [ -z "$task_id" ] && task_id="task-$(date +%s)"
 
+# L2: Validate and cap max_retries to prevent GPU saturation
+case "$max_retries" in ''|*[!0-9]*) max_retries=3 ;; esac
+if [ "$max_retries" -gt 10 ]; then
+  echo "Warning: max_retries capped at 10 (was $max_retries)" >&2
+  max_retries=10
+fi
+
+# C1: Security — validate commands against dangerous patterns before execution
+shunt_validate_exec_command() {
+  local cmd="$1" label="$2"
+  [ -z "$cmd" ] && return 0
+
+  # Blocklist of patterns that should never appear in test/rollback commands
+  local -a blocked_patterns=(
+    'curl .*(||\|).*sh'
+    'wget .*(||\|).*sh'
+    'curl.*\| *sh'
+    'wget.*\| *sh'
+    'curl.*\| *bash'
+    'wget.*\| *bash'
+    '\bssh '
+    '\bnc '
+    '\bncat '
+    '\beval '
+    '\bexec '
+    'rm -rf /'
+    '\bdd if='
+    '\bmkfs'
+    'chmod 777'
+    '> /etc/'
+    '> /boot/'
+    '> /usr/'
+    '\bsudo '
+    '\bsu -c'
+    'base64.*decode.*\|'
+    "python[23]? -c.*import.*os\."
+    "ruby.*-e.*system"
+    "perl.*-e.*exec"
+    '\bcryptominer'
+    '\bxmrig'
+  )
+
+  for pattern in "${blocked_patterns[@]}"; do
+    if echo "$cmd" | grep -qiE "$pattern"; then
+      echo "🔒 BLOCKED: $label contains a dangerous pattern." >&2
+      echo "   Command: $cmd" >&2
+      echo "   Matched: $pattern" >&2
+      echo "   If this is legitimate, re-run with --allow-unsafe to bypass." >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
 # 3. Preflight checks
 if ! shunt_is_enabled; then
   cat << JSON
@@ -158,6 +214,12 @@ JSON
 fi
 
 shunt_preflight || exit 1
+
+# C1: Validate commands unless --allow-unsafe is set
+if [ "$allow_unsafe" != "true" ]; then
+  shunt_validate_exec_command "$verification_command" "verification_command" || exit 1
+  shunt_validate_exec_command "$rollback_command" "rollback_command" || exit 1
+fi
 
 # 4. Capability B: Lean Context Packer
 shunt_tmpfile context_file || exit 1
@@ -248,13 +310,22 @@ import sys, os, re
 response = sys.argv[1]
 targets = sys.argv[2:]
 
-RESTRICTED_SYSTEM_DIRS = ('/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin')
+# C3: Security — positive whitelist replaces incomplete system dirs blocklist
+CWD = os.path.realpath(os.getcwd())
+HOME = os.path.expanduser('~')
+ALLOWED_TARGETS = set(os.path.realpath(os.path.abspath(t)) for t in targets)
 
 def is_safe_target(t):
     abs_t = os.path.realpath(os.path.abspath(t))
-    for p in RESTRICTED_SYSTEM_DIRS:
-        if abs_t == p or abs_t.startswith(p + os.sep):
-            return False
+    # Explicitly declared --files targets are always trusted (user/agent chose them)
+    if abs_t in ALLOWED_TARGETS:
+        return True
+    # LLM-generated paths: must be within the current working directory
+    if not (abs_t.startswith(CWD + os.sep) or abs_t == CWD):
+        return False
+    # Must not write to hidden files/dirs in home (e.g. ~/.ssh, ~/.gnupg)
+    if abs_t.startswith(HOME + os.sep + '.'):
+        return False
     return True
 
 # 1. Look for SEARCH/REPLACE blocks first
