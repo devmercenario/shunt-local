@@ -235,6 +235,38 @@ def is_sensitive_read(path_str):
 
 
 
+def resolve_working_dir(args, targets=None):
+    """Resolve the effective working directory, accounting for harness daemons running in ~/.gemini."""
+    for key in ("Cwd", "cwd", "working_dir", "workingDirectory"):
+        if args.get(key):
+            return os.path.realpath(str(args[key]))
+    proc_cwd = os.path.realpath(os.getcwd())
+    home = os.path.expanduser("~")
+    gemini_dir = os.path.join(home, ".gemini")
+    if proc_cwd.startswith(gemini_dir) or proc_cwd == home or proc_cwd.startswith("/tmp"):
+        if targets:
+            for t in targets:
+                abs_t = os.path.realpath(t)
+                cur = os.path.dirname(abs_t) if (os.path.isfile(abs_t) or not os.path.exists(abs_t)) else abs_t
+                while cur and cur != os.path.dirname(cur) and cur != home:
+                    if os.path.exists(os.path.join(cur, ".git")):
+                        return cur
+                    cur = os.path.dirname(cur)
+        trusted_file = os.path.join(gemini_dir, "trustedFolders.json")
+        if os.path.isfile(trusted_file) and targets:
+            try:
+                with open(trusted_file, "r", encoding="utf-8") as tf_handle:
+                    tf = json.load(tf_handle)
+                for t in targets:
+                    abs_t = os.path.realpath(t)
+                    for folder, status in tf.items():
+                        if status == "TRUST_FOLDER" and (abs_t.startswith(folder + os.sep) or abs_t == folder):
+                            return folder
+            except Exception:
+                pass
+    return proc_cwd
+
+
 def extract_write_paths(name, args):
     """Return the file paths a write tool intends to touch."""
     patch = str(args.get("command") or "") if "command" in args else ""
@@ -301,6 +333,8 @@ def main():
     parser.add_argument("--kind", default="auto")
     opts = parser.parse_args()
 
+    if os.environ.get("__SHUNT_TEST_FORCE_CRASH") == "1":
+        raise RuntimeError("Forced test crash")
     raw = sys.stdin.read()
     try:
         payload = json.loads(raw) if raw.strip() else {}
@@ -379,7 +413,7 @@ def main():
             return allow()
         allow_outside = os.environ.get("SHUNT_ALLOW_WRITES_OUTSIDE_CWD") == "true"
         allow_sensitive = os.environ.get("SHUNT_ALLOW_SENSITIVE_WRITES") == "true"
-        cwd = os.path.realpath(os.getcwd())
+        cwd = resolve_working_dir(args, targets)
         home = os.path.expanduser("~")
         allowed = {shunt_paths.realpath(t) for t in targets}
         for target in targets:
@@ -417,4 +451,13 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        if os.environ.get("SHUNT_DEBUG") == "true":
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        # Fail-open: never block host harness or other plugins on internal error.
+        harness = "antigravity" if ("--harness" in sys.argv and "antigravity" in sys.argv) else "claude"
+        emit(harness, "allow")
+        raise SystemExit(0)

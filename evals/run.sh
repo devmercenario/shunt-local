@@ -178,6 +178,7 @@ run_external_suite "$SCRIPT_DIR/packaging-evals.sh" "Packaging suite (marketplac
 run_external_suite "$SCRIPT_DIR/version-evals.sh" "Version suite (manifest version discipline)"
 run_external_suite "$SCRIPT_DIR/install-evals.sh" "Installer suite (install/uninstall lifecycle)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
+run_external_suite "$SCRIPT_DIR/resilience-evals.sh" "Resilience & interoperability suite (fail-open, multi-plugin)"
 
 echo ""
 echo "════════════════════════════════════════════════════════════════"
