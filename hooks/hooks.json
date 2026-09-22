@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/check-file-size"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind read"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/check-bash-read"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind bash"
           }
         ]
       }

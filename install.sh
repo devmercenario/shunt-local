@@ -94,8 +94,8 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
 
   tmp_hooks=$(umask 077 && mktemp) || exit 1
   jq \
-    --arg size_hook "$SCRIPT_DIR/hooks/check-file-size" \
-    --arg bash_hook "$SCRIPT_DIR/hooks/check-bash-read" \
+    --arg size_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind read" \
+    --arg bash_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind bash" \
     '. + {
       "shunt-local": {
         "PreToolUse": [
@@ -142,7 +142,7 @@ fi
 
 # 10. Register Cursor native hooks when Cursor is present.
 #     Cursor expects {permission:"allow"|"deny"} and has its own matcher names,
-#     so the shared hooks are invoked with SHUNT_HOOK_HARNESS=cursor.
+#     so the shared guard is invoked with --harness cursor.
 CURSOR_CONFIG_DIR="${HOME}/.cursor"
 CURSOR_HOOKS_FILE="${CURSOR_CONFIG_DIR}/hooks.json"
 if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
@@ -152,11 +152,11 @@ if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
     [ -f "$CURSOR_HOOKS_FILE" ] || echo '{"version": 1, "hooks": {}}' > "$CURSOR_HOOKS_FILE"
     tmp_cur=$(umask 077 && mktemp) || exit 1
     jq \
-      --arg read_hook "SHUNT_HOOK_HARNESS=cursor $SCRIPT_DIR/hooks/check-file-size" \
-      --arg shell_hook "SHUNT_HOOK_HARNESS=cursor $SCRIPT_DIR/hooks/check-bash-read" \
+      --arg read_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind read" \
+      --arg shell_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind bash" \
       '.version = 1
        | .hooks = (.hooks // {})
-       | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("check-file-size|check-bash-read") | not)))
+       | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("shunt_guard.py") | not)))
        | .hooks.preToolUse += [
            {"matcher": "Read", "command": $read_hook},
            {"matcher": "Shell", "command": $shell_hook}

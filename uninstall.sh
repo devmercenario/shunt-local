@@ -80,7 +80,7 @@ fi
 # 9. Remove Cursor native hooks registered by the installer
 if [ -f "$CURSOR_HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
   tmp_cur=$(umask 077 && mktemp) || exit 1
-  jq '.hooks.preToolUse = ((.hooks.preToolUse // []) | map(select((.command // "") | test("check-file-size|check-bash-read") | not)))' \
+  jq '.hooks.preToolUse = ((.hooks.preToolUse // []) | map(select((.command // "") | test("shunt_guard.py|check-file-size|check-bash-read") | not)))' \
     "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
   echo "Removed shunt-local hooks from $CURSOR_HOOKS_FILE"
 fi

@@ -1,62 +1,9 @@
 #!/bin/bash
-# Block full-file reads on large files, redirect to the /bulk-reader skill.
-# Harnesses: Antigravity (view_file), Claude Code (Read), Codex, Cursor (preToolUse Read).
-
-SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$SOURCE" ]; do
-  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-HOOK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
-  . "$HOOK_DIR/../scripts/lib/local-llm.sh"
+# PreToolUse guard: block full-file reads on large files.
+# The cross-platform implementation lives in hooks/shunt_guard.py.
+DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$DIR/shunt_guard.py" --kind read "$@"
 fi
-
-# Read stdin once. Antigravity sends {toolCall:{name,args}}; Claude Code, Codex
-# and Cursor send tool_name/tool_input. SHUNT_HOOK_HARNESS may force the format.
-input=$(cat)
-is_antigravity=$(printf '%s' "$input" | jq -r 'has("toolCall")' 2>/dev/null || echo false)
-
-allow_now() {
-  shunt_emit_pretooluse_decision allow "" "$is_antigravity"
-  exit 0
-}
-
-# If master switch is OFF or view_file sub-hook is disabled, allow immediately
-if ! shunt_hook_is_enabled "view_file"; then
-  allow_now
-fi
-
-MIN_LINES="${SHUNT_MIN_LINES:-350}"
-case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
-
-# Extract filepath and bounds from Antigravity (toolCall) or Claude/Codex/Cursor (tool_input)
-file_path=$(printf '%s' "$input" | jq -r '.toolCall.args.AbsolutePath // .tool_input.file_path // empty')
-offset=$(printf '%s' "$input" | jq -r '.toolCall.args.StartLine // .tool_input.offset // empty')
-limit=$(printf '%s' "$input" | jq -r '.toolCall.args.EndLine // .tool_input.limit // empty')
-
-# Allow targeted reads (offset/limit set to meaningful non-zero values)
-if { [ -n "$offset" ] && [ "$offset" != "0" ]; } || { [ -n "$limit" ] && [ "$limit" != "0" ]; }; then
-  allow_now
-fi
-
-# Allow if file doesn't exist or path is empty
-if [ -z "$file_path" ] || [ ! -f "$file_path" ]; then
-  allow_now
-fi
-
-# Allow small files — delegation overhead isn't worth it
-lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "$lines" -le "$MIN_LINES" ]; then
-  allow_now
-fi
-
-# If local LLM server is offline, fail-open to cloud model
-if ! shunt_is_online; then
-  allow_now
-fi
-
-reason="File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of reading it directly. If you need exact content for editing, re-read with a line range for just the section you need."
-shunt_emit_pretooluse_decision deny "$reason" "$is_antigravity"
+# Fail-open if python3 is unavailable (shunt-local requires python3).
 exit 0

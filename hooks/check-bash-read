@@ -1,81 +1,9 @@
 #!/bin/bash
-# Block Bash/Shell commands that read large files, redirect to the /bulk-reader skill.
-# Harnesses: Antigravity (run_command), Claude Code (Bash|PowerShell), Codex (Bash),
-# Cursor (preToolUse Shell).
-
-SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$SOURCE" ]; do
-  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-HOOK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
-  . "$HOOK_DIR/../scripts/lib/local-llm.sh"
+# PreToolUse guard: block Bash/Shell commands that read large files.
+# The cross-platform implementation lives in hooks/shunt_guard.py.
+DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$DIR/shunt_guard.py" --kind bash "$@"
 fi
-
-# Read stdin once. Antigravity sends {toolCall:{name,args}}; Claude Code, Codex
-# and Cursor send tool_name/tool_input. SHUNT_HOOK_HARNESS may force the format.
-input=$(cat)
-is_antigravity=$(printf '%s' "$input" | jq -r 'has("toolCall")' 2>/dev/null || echo false)
-
-allow_now() {
-  shunt_emit_pretooluse_decision allow "" "$is_antigravity"
-  exit 0
-}
-
-# If master switch is OFF or run_command sub-hook is disabled, allow immediately
-if ! shunt_hook_is_enabled "run_command"; then
-  allow_now
-fi
-
-MIN_LINES="${SHUNT_MIN_LINES:-350}"
-case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
-
-# Extract command from Antigravity (toolCall) or Claude/Codex/Cursor (tool_input)
-command=$(printf '%s' "$input" | jq -r '.toolCall.args.CommandLine // .tool_input.command // empty')
-[ -z "$command" ] && allow_now
-
-# Skip piped commands (cat file | grep) — those are targeted reads
-printf '%s' "$command" | grep -qE '\|' && allow_now
-
-# Skip redirections (cat file > out) — not a read-into-context operation
-printf '%s' "$command" | grep -qE '>' && allow_now
-
-# Extract file path from read commands, stripping flags (e.g. cat -n, head -100)
-file_path=""
-if printf '%s' "$command" | grep -qE '^(cat|head|tail|less|more|bat|tac|nl|pr) '; then
-  cmd_verb=$(printf '%s' "$command" | awk '{print $1}')
-  args=$(printf '%s' "$command" | sed -E 's/^(cat|head|tail|less|more|bat|tac|nl|pr) +//')
-  skip_next=false
-  for arg in $args; do
-    if [ "$skip_next" = "true" ]; then skip_next=false; continue; fi
-    case "$arg" in
-      -n|-c|--lines|--bytes)
-        # Only head/tail take a separate value after -n/-c (e.g. head -n 5 file)
-        # For cat, -n is standalone (cat -n file)
-        case "$cmd_verb" in head|tail) skip_next=true ;; esac
-        continue
-        ;;
-      -*) continue ;;
-      *)  file_path=$(printf '%s' "$arg" | tr -d '"'"'"); break ;;
-    esac
-  done
-fi
-
-[ -z "$file_path" ] && allow_now
-[ ! -f "$file_path" ] && allow_now
-
-lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "$lines" -le "$MIN_LINES" ]; then
-  allow_now
-fi
-
-# If local LLM server is offline, fail-open to cloud model
-if ! shunt_is_online; then
-  allow_now
-fi
-
-reason="File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of cat/head/tail."
-shunt_emit_pretooluse_decision deny "$reason" "$is_antigravity"
+# Fail-open if python3 is unavailable (shunt-local requires python3).
 exit 0

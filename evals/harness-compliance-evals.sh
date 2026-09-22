@@ -78,6 +78,22 @@ check "cursor-agent-msg" "yes" "$([ -n "$(printf '%s' "$cursor_deny" | jq -r '.a
 cursor_allow=$(run_hook "$BASH_HOOK" "{\"tool_name\":\"Shell\",\"tool_input\":{\"command\":\"cat $WORKDIR/small.txt\"}}" cursor)
 check "cursor-allow-format" "allow" "$(printf '%s' "$cursor_allow" | jq -r '.permission // empty')" "Cursor allow is {\"permission\":\"allow\"}"
 
+# ---- Cross-platform Python guard (used by hooks/hooks.json and Windows) ----
+GUARD="$PLUGIN_DIR/hooks/shunt_guard.py"
+guard_run() { printf '%s' "$1" | HOME="$WORKDIR/home" __SHUNT_TEST_MOCK_ONLINE=1 python3 "$GUARD" "${@:2}" 2>/dev/null; }
+
+g=$(guard_run "{\"toolCall\":{\"name\":\"view_file\",\"args\":{\"AbsolutePath\":\"$WORKDIR/large.txt\"}}}" --harness antigravity)
+check "guard-antigravity" "deny" "$(printf '%s' "$g" | jq -r '.decision // empty')" "python guard emits Antigravity deny"
+
+g=$(guard_run "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$WORKDIR/large.txt\"}}")
+check "guard-claude" "deny" "$(printf '%s' "$g" | jq -r '.hookSpecificOutput.permissionDecision // empty')" "python guard emits Claude nested deny"
+
+g=$(guard_run "{\"tool_name\":\"Shell\",\"tool_input\":{\"command\":\"cat $WORKDIR/large.txt\"}}" --harness cursor --kind bash)
+check "guard-cursor" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')" "python guard emits Cursor deny"
+
+g=$(guard_run "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$WORKDIR/small.txt\"}}")
+check "guard-allow-silent" "" "$g" "python guard allow emits nothing"
+
 # ---- Manifests / configuration ----
 check "claude-matcher-powershell" "Bash|PowerShell" \
   "$(jq -r '.hooks.PreToolUse[] | select(.matcher | test("PowerShell")) | .matcher' "$PLUGIN_DIR/hooks/hooks.json")" \
@@ -118,10 +134,10 @@ check "cursor-rule-frontmatter" "alwaysapply" "$mdc_check" "Cursor rule frontmat
 
 # Installer must register Cursor hooks with the cursor output format.
 check "install-cursor-hooks" "yes" \
-  "$(grep -q 'SHUNT_HOOK_HARNESS=cursor' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "$(grep -q -- '--harness cursor' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
   "install.sh registers Cursor hooks with cursor format"
 check "update-cursor-hooks" "yes" \
-  "$(grep -q 'SHUNT_HOOK_HARNESS=cursor' "$PLUGIN_DIR/scripts/shunt-update" && echo yes || echo no)" \
+  "$(grep -q -- '--harness cursor' "$PLUGIN_DIR/scripts/shunt-update" && echo yes || echo no)" \
   "shunt-update refreshes Cursor hooks"
 
 # Skills must have name + description frontmatter (Agent Skills requirement).
