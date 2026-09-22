@@ -160,6 +160,7 @@ run_external_suite "$SCRIPT_DIR/redaction-evals.sh" "Redaction & confinement sui
 run_external_suite "$SCRIPT_DIR/fuzz-evals.sh" "Fuzz suite (command & endpoint properties)"
 run_external_suite "$SCRIPT_DIR/observability-evals.sh" "Observability suite (audit log)"
 run_external_suite "$SCRIPT_DIR/harness-compliance-evals.sh" "Harness compliance suite (Antigravity, Claude Code, Codex, Cursor)"
+run_external_suite "$SCRIPT_DIR/portability-evals.sh" "Portability suite (Windows paths, PowerShell, CRLF)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 
 echo ""

@@ -5,6 +5,7 @@ Keeping this in one module means task-exec, the PreToolUse guard and any future
 harness adapter enforce exactly the same policy.
 """
 import os
+import re
 
 # Files/directories whose modification enables code execution, credential theft
 # or CI/supply-chain persistence. Writable inside the CWD, but not by default.
@@ -26,6 +27,11 @@ def realpath(path: str) -> str:
     return os.path.realpath(os.path.abspath(path))
 
 
+def _parts(value: str):
+    """Split on either separator so Windows paths are understood on any OS."""
+    return [p for p in re.split(r"[\\/]+", value) if p]
+
+
 def is_sensitive_path(abs_path: str, cwd: str) -> bool:
     try:
         rel = os.path.relpath(abs_path, cwd)
@@ -33,7 +39,7 @@ def is_sensitive_path(abs_path: str, cwd: str) -> bool:
         return True
     if rel == ".." or rel.startswith(".." + os.sep):
         return True
-    for part in rel.split(os.sep):
+    for part in _parts(rel):
         if part in SENSITIVE_NAMES:
             return True
     return False

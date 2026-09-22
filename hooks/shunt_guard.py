@@ -210,7 +210,7 @@ def is_sensitive_read(path_str):
     home = os.path.expanduser("~")
     if abs_p.startswith(home + os.sep + "."):
         return True
-    for part in abs_p.split(os.sep):
+    for part in re.split(r"[\\/]+", abs_p):
         if part in shunt_paths.SENSITIVE_NAMES:
             return True
     return False
@@ -323,13 +323,15 @@ def main():
                 return 0
             return allow()
         path = read_path_from_args(args)
-        if not path or offset_from_args(args) or not os.path.isfile(path):
+        if not path or offset_from_args(args):
             return allow()
         if os.environ.get("SHUNT_ALLOW_SENSITIVE_READS") != "true" and is_sensitive_read(path):
             emit(harness, "deny",
                  f"shunt-local blocked reading protected file '{path}'. "
                  "Set SHUNT_ALLOW_SENSITIVE_READS=true to allow.")
             return 0
+        if not os.path.isfile(path):
+            return allow()
         lines = count_lines(path)
         if lines <= cfg["min_lines"]:
             return allow()

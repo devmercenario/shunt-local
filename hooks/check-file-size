@@ -2,8 +2,9 @@
 # PreToolUse guard: block full-file reads on large files.
 # The cross-platform implementation lives in hooks/shunt_guard.py.
 DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if command -v python3 >/dev/null 2>&1; then
-  exec python3 "$DIR/shunt_guard.py" --kind read "$@"
+PY="$(command -v python3 || command -v python || true)"
+if [ -n "$PY" ]; then
+  exec "$PY" "$DIR/shunt_guard.py" --kind read "$@"
 fi
-# Fail-open if python3 is unavailable (shunt-local requires python3).
+# Fail-open if no Python interpreter is available (shunt-local requires it).
 exit 0

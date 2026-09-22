@@ -40,7 +40,7 @@ for bin_script in bulk-read code-write shunt-update shunt-local task-exec; do
   target="$SCRIPT_DIR/scripts/$bin_script"
   if [ -f "$target" ]; then
     chmod +x "$target"
-    ln -sf "$target" "$BIN_DIR/$bin_script"
+    ln -sf "$target" "$BIN_DIR/$bin_script" 2>/dev/null || cp -f "$target" "$BIN_DIR/$bin_script"
     echo "Linked binary '$bin_script' -> $BIN_DIR/$bin_script"
   fi
 done

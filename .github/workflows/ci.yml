@@ -14,8 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +29,19 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: brew install jq
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install jq -y --no-progress
+
+      - name: Provide python3 alias (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexec python "$@"\n' > "$HOME/.local/bin/python3"
+          chmod +x "$HOME/.local/bin/python3"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run eval suite
         run: bash evals/run.sh
