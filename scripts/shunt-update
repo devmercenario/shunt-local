@@ -20,6 +20,8 @@ HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
 TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
 
 DO_PULL=true
+DO_APPLY=false
+FETCHED=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,9 +33,16 @@ while [[ $# -gt 0 ]]; do
       DO_PULL=true
       shift
       ;;
+    --yes|-y)
+      DO_APPLY=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: shunt-update [--pull | --no-pull]"
-      echo "Updates shunt-local hooks, skills, and binaries."
+      echo "Usage: shunt-update [--pull | --no-pull] [--yes]"
+      echo "Updates shunt-local hooks, skills, and binaries from the repository."
+      echo ""
+      echo "  --yes        Apply fetched upstream changes (default is a dry-run)."
+      echo "  --no-pull    Skip the remote fetch entirely; re-install from current files."
       exit 0
       ;;
     *)
@@ -44,14 +53,46 @@ done
 
 echo "Updating shunt-local..."
 
-# 1. Fetch and pull latest changes from remote repository (GitHub)
+# 1. Fetch and pull latest changes from remote repository (supply-chain hardened).
+# The remote must be a well-known code host (unless explicitly opted in), and
+# fetching is a dry-run by default: changes are only applied with --yes.
+if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
+  if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if git -C "$REPO_DIR" remote | grep -q 'origin'; then
+      remote_url=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null || echo "")
+      case "$remote_url" in
+        *github.com*|*gitlab.com*|*bitbucket.org*) ;;
+        *)
+          if [ "${SHUNT_ALLOW_UNTRUSTED_REMOTE:-}" != "true" ]; then
+            echo "🔒 Refusing to pull from untrusted remote: ${remote_url:-<none>}" >&2
+            echo "   Set SHUNT_ALLOW_UNTRUSTED_REMOTE=true to allow this remote." >&2
+            DO_PULL=false
+          fi
+          ;;
+      esac
+    fi
+  fi
+fi
+
 if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if git -C "$REPO_DIR" remote | grep -q 'origin'; then
       current_branch=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-      echo "Fetching and pulling latest changes from remote repository (origin/${current_branch})..."
-      git -C "$REPO_DIR" fetch origin "$current_branch"
-      git -C "$REPO_DIR" pull --ff-only origin "$current_branch" || echo "Warning: git pull was not fast-forwarded or local changes exist. Continuing with current repository files."
+      echo "Fetching latest changes from origin/${current_branch}..."
+      git -C "$REPO_DIR" fetch origin "$current_branch" && FETCHED=true || echo "Warning: fetch failed; continuing with current repository files."
+      if [ "$FETCHED" = "true" ]; then
+        if [ "$DO_APPLY" = "true" ]; then
+          git -C "$REPO_DIR" pull --ff-only origin "$current_branch" || echo "Warning: git pull was not fast-forwarded or local changes exist. Continuing with current repository files."
+        else
+          echo ""
+          echo "ℹ️  Dry run: fetched but did NOT apply changes (pass --yes to apply)."
+          echo "    Pending upstream commits:"
+          git -C "$REPO_DIR" log --oneline "HEAD..origin/${current_branch}" 2>/dev/null | head -20 || true
+          echo "    Re-run 'shunt-update --yes' to apply these updates."
+          echo ""
+          exit 0
+        fi
+      fi
     fi
   fi
 fi

@@ -41,17 +41,29 @@ Cloud Agent (untrusted input via prompt injection)
 
 ### Built-in Security Controls
 
-1. **Endpoint Validation**: Non-localhost HTTP endpoints are blocked by default. Set `SHUNT_ALLOW_REMOTE=true` to override.
-2. **API Key Protection**: API keys cannot be sent over plain HTTP to non-localhost endpoints.
-3. **Command Validation**: Verification and rollback commands are checked against a blocklist of dangerous shell patterns. Use `--allow-unsafe` to bypass for legitimate edge cases.
-4. **Path Traversal Prevention**: File writes are restricted to the current working directory. Home dotfiles (`~/.ssh`, `~/.gnupg`, etc.) are explicitly protected.
+1. **Endpoint Validation**: ANY non-localhost endpoint (HTTP **or** HTTPS) is blocked by default. Set `SHUNT_ALLOW_REMOTE=true` to explicitly allow remote endpoints; remote endpoints are only accepted over HTTPS (plain HTTP is always rejected). URLs containing embedded credentials (`http://127.0.0.1:8080@evil.com`) are rejected.
+2. **API Key Protection**: The API key is only ever sent to localhost endpoints and is never transmitted to remote hosts (including the health check).
+3. **Command Validation**: Verification and rollback commands are checked against a blocklist of dangerous patterns **and** a default-deny on shell metacharacters (`;`, `|`, `&`, `$(`, backticks). The `--allow-unsafe` escape hatch only works when `SHUNT_ALLOW_UNSAFE=true` is set in the operator's environment (a prompt-injected agent cannot enable it by itself).
+4. **Path Traversal Prevention**: ALL file writes (including explicitly declared `--files` targets) are restricted to the current working directory with symlinks resolved. Home dotfiles (`~/.ssh`, `~/.gnupg`, etc.) are always protected. Set `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true` to opt out for legitimate edge cases.
 5. **Temp File Security**: All temporary files are created with `umask 077` to prevent race-condition reads.
-6. **Config Poisoning Warning**: Project-level `shunt.config.json` files trigger a visible stderr warning.
-7. **Fail-Open Design**: When the local LLM is offline, hooks allow normal cloud agent operation — they never block the developer's workflow.
+6. **Config Poisoning Protection**: Project-level `shunt.config.json` files are **ignored** unless `SHUNT_ALLOW_PROJECT_CONFIG=true` is set. A project cannot silently redirect your "local" inference to a remote server.
+7. **Fail-Open Design**: When the local LLM is offline, hooks allow normal cloud agent operation — they never block the developer's workflow. Disallowed endpoints are treated as offline (fail-closed for the network, fail-open for the workflow).
+8. **Supply-Chain Hardening**: `shunt-update` is a dry-run by default (`--yes` to apply) and refuses to pull from untrusted remotes unless `SHUNT_ALLOW_UNTRUSTED_REMOTE=true`.
+
+### Opt-in escape hatches (all off by default)
+
+| Environment variable | Effect |
+| :--- | :--- |
+| `SHUNT_ALLOW_REMOTE=true` | Allow remote LLM endpoints (HTTPS only). |
+| `SHUNT_ALLOW_PROJECT_CONFIG=true` | Honor a repo-local `./shunt.config.json`. |
+| `SHUNT_ALLOW_UNSAFE=true` | Let `--allow-unsafe` bypass command validation. |
+| `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true` | Let `--files` targets be written outside the working directory. |
+| `SHUNT_ALLOW_UNTRUSTED_REMOTE=true` | Let `shunt-update` pull from non-GitHub/GitLab/Bitbucket remotes. |
 
 ### Known Limitations
 
-- **No sandboxing**: Commands passed to `--test-cmd` and `--rollback-cmd` execute directly on the host OS. The blocklist prevents obvious attacks but cannot guarantee safety against sophisticated payloads. Consider using `firejail` or `bwrap` for high-security environments.
+- **No sandboxing**: Commands passed to `--test-cmd` and `--rollback-cmd` execute directly on the host OS. The blocklist + metacharacter default-deny stop obvious attacks but cannot guarantee safety against sophisticated payloads. Consider using `firejail` or `bwrap` for high-security environments.
+- **Compound test commands require opt-in**: Legitimate shell compound commands (pipes, `&&`, variable expansion) are blocked by default; enable them deliberately with `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`.
 - **Bash hook coverage**: The bash read interceptor covers `cat`, `head`, `tail`, `less`, `more`, `bat`, `tac`, `nl`, and `pr`. Other file-reading commands (e.g., `awk`, `sed`, `python -c`) are not intercepted.
 - **Cursor integration**: Cursor support relies on `.cursorrules` rather than hard hook interception. The agent may choose to ignore delegation instructions.
 

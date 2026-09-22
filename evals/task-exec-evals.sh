@@ -29,6 +29,7 @@ echo "────────────────────────�
 # Test 1: Capability A - Spec file parsing & single-shot success
 (
   export SHUNT_CONFIG_PATH="$WORKDIR/dummy-cfg.json"
+  cd "$WORKDIR"
   cat << 'JSON' > "$SHUNT_CONFIG_PATH"
 {
   "enabled": true,
@@ -98,6 +99,7 @@ check "exec-success-attempts" "1" "$attempts1" "completed on attempt 1"
 # Test 2: Capability C - Self-Correction Loop (Attempt 1 fails, Attempt 2 succeeds)
 (
   export SHUNT_CONFIG_PATH="$WORKDIR/dummy-cfg.json"
+  cd "$WORKDIR"
   TARGET_FILE="$WORKDIR/corrected_module.py"
   TEST_FILE="$WORKDIR/test_corrected.py"
 
@@ -177,6 +179,7 @@ check "self-correction-attempts" "2" "$attempts2" "took 2 attempts to fix the bu
 # Test 3: Capability C & Rollback - Retries exhausted triggers rollback command
 (
   export SHUNT_CONFIG_PATH="$WORKDIR/dummy-cfg.json"
+  cd "$WORKDIR"
   TARGET_FILE="$WORKDIR/failing_module.py"
   ROLLBACK_FLAG="$WORKDIR/rolled_back.flag"
 

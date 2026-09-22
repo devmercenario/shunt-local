@@ -13,7 +13,7 @@ shunt_load_config() {
   local cfg_file=""
   if [ -n "${SHUNT_CONFIG_PATH:-}" ] && [ -f "${SHUNT_CONFIG_PATH}" ]; then
     cfg_file="${SHUNT_CONFIG_PATH}"
-  elif [ -f "./shunt.config.json" ]; then
+  elif [ "${SHUNT_ALLOW_PROJECT_CONFIG:-}" = "true" ] && [ -f "./shunt.config.json" ]; then
     cfg_file="./shunt.config.json"
   elif [ -f "$HOME/.config/shunt-local/config.json" ]; then
     cfg_file="$HOME/.config/shunt-local/config.json"
@@ -59,39 +59,52 @@ shunt_load_config
 # Security: validate endpoint to prevent config hijacking (C2, H1, H2)
 shunt_validate_endpoint() {
   local endpoint="$1"
-  local host=""
+  local scheme host rest
 
-  # Extract host from URL
-  host=$(echo "$endpoint" | sed -E 's|^https?://||' | sed -E 's|[:/].*||')
+  # Reject URLs with embedded userinfo (e.g. http://127.0.0.1:8080@evil.com) —
+  # this can spoof the host that actually receives the data.
+  case "$endpoint" in
+    *@*)
+      echo "🔒 BLOCKED: endpoint URL contains embedded credentials (@)." >&2
+      echo "   This can spoof the host used for data transmission." >&2
+      return 1
+      ;;
+  esac
 
-  # Localhost endpoints are always safe
+  # Extract scheme and host from the URL.
+  scheme=$(echo "$endpoint" | sed -nE 's|^([a-zA-Z][a-zA-Z0-9+.-]*)://.*|\1|p')
+  rest=$(echo "$endpoint" | sed -E 's|^[a-zA-Z][a-zA-Z0-9+.-]*://||')
+  host=$(echo "$rest" | sed -E 's|[:/].*||')
+  [ -n "$scheme" ] || scheme="http"
+
+  # Localhost endpoints are always safe.
   case "$host" in
     127.0.0.1|localhost|'[::1]'|::1|0.0.0.0) return 0 ;;
   esac
 
-  # Non-localhost endpoint over plain HTTP — data exfiltration risk
-  if [[ "$endpoint" == http://* ]]; then
-    if [ "${SHUNT_ALLOW_REMOTE:-}" != "true" ]; then
-      echo "⚠️  SECURITY: Non-localhost endpoint '$endpoint' uses plain HTTP." >&2
-      echo "   Your source code and prompts would be transmitted in plain text." >&2
-      echo "   Set SHUNT_ALLOW_REMOTE=true to allow remote endpoints." >&2
-      return 1
-    fi
+  # ANY non-localhost endpoint (HTTP or HTTPS) requires explicit opt-in. Without
+  # this, an HTTPS endpoint in a project config would silently exfiltrate source.
+  if [ "${SHUNT_ALLOW_REMOTE:-}" != "true" ]; then
+    echo "🔒 BLOCKED: Non-localhost endpoint '$endpoint' is not allowed by default." >&2
+    echo "   Your source code and prompts would be transmitted to a remote server." >&2
+    echo "   Set SHUNT_ALLOW_REMOTE=true to explicitly allow remote endpoints." >&2
+    return 1
   fi
 
-  # API key over plain HTTP to non-localhost — credential leak
-  if [ -n "${SHUNT_API_KEY:-}" ] && [[ "$endpoint" == http://* ]]; then
-    echo "🔒 BLOCKED: API key configured with plain HTTP non-localhost endpoint." >&2
-    echo "   Your API key would be transmitted in plain text. Use HTTPS." >&2
+  # Remote endpoints are only allowed over TLS; plain HTTP is never acceptable.
+  if [ "$scheme" = "http" ]; then
+    echo "🔒 BLOCKED: plain HTTP to non-localhost is not allowed." >&2
+    echo "   Your source code would be transmitted in cleartext. Use HTTPS." >&2
     return 1
   fi
 
   return 0
 }
 
-# Warn at load time if CWD config file is detected (potential poisoning)
-if [ -f "./shunt.config.json" ]; then
-  echo "⚠️  shunt-local: Loading project config from ./shunt.config.json" >&2
+# Warn at load time if a project config exists but is not enabled (potential poisoning).
+# Project configs are only honored with an explicit SHUNT_ALLOW_PROJECT_CONFIG=true.
+if [ -f "./shunt.config.json" ] && [ "${SHUNT_ALLOW_PROJECT_CONFIG:-}" != "true" ]; then
+  echo "⚠️  shunt-local: ./shunt.config.json detected but IGNORED (requires SHUNT_ALLOW_PROJECT_CONFIG=true)." >&2
 fi
 
 shunt_is_enabled() {
@@ -162,6 +175,12 @@ shunt_preflight() {
 
 shunt_is_online() {
   [ "${__SHUNT_TEST_MOCK_ONLINE:-}" = "1" ] && return 0
+
+  # Refuse to health-check a disallowed endpoint. This prevents a config-poisoned
+  # endpoint from becoming a beacon on every hook invocation (and leaking the API
+  # key in the Authorization header). Fail closed => hooks fail open to the cloud.
+  shunt_validate_endpoint "$SHUNT_ENDPOINT" >/dev/null 2>&1 || return 1
+
   local base="${SHUNT_ENDPOINT%/}"
   local health_url
   if [[ "$base" == */v1/chat/completions ]]; then
@@ -169,8 +188,16 @@ shunt_is_online() {
   else
     health_url="$base"
   fi
+
+  # Only send the API key to localhost endpoints; never to remote hosts.
   local auth_header=()
-  [ -n "${SHUNT_API_KEY:-}" ] && auth_header=(-H "Authorization: Bearer $SHUNT_API_KEY")
+  if [ -n "${SHUNT_API_KEY:-}" ]; then
+    local health_host
+    health_host=$(echo "$SHUNT_ENDPOINT" | sed -E 's|^[a-zA-Z][a-zA-Z0-9+.-]*://||' | sed -E 's|[:/].*||')
+    case "$health_host" in
+      127.0.0.1|localhost|'[::1]'|::1|0.0.0.0) auth_header=(-H "Authorization: Bearer $SHUNT_API_KEY") ;;
+    esac
+  fi
   curl -s -S --connect-timeout 0.1 -m 0.3 "${auth_header[@]}" "$health_url" >/dev/null 2>&1
 }
 

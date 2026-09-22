@@ -54,9 +54,10 @@ shunt_invoke "$MODE_NAME" "$message_file" > "$answer_file" || exit 1
 clean=$(sed '/^```/d' "$answer_file")
 
 if [ -n "$target" ]; then
-  # Security: validate target path is within current working directory
-  real_target=$(cd "$(dirname "$target")" 2>/dev/null && pwd || echo "")/$(basename "$target")
+  # Security: resolve the parent directory physically (so symlinked dirs cannot
+  # escape the working directory) and refuse to write through a symlink target.
   real_cwd=$(pwd -P)
+  real_target=$(cd "$(dirname "$target")" 2>/dev/null && pwd -P || echo "")/$(basename "$target")
   case "$real_target" in
     "$real_cwd"/*)  ;; # Within CWD — safe
     "$real_cwd")    ;; # Is CWD itself — safe
@@ -67,6 +68,10 @@ if [ -n "$target" ]; then
       exit 1
       ;;
   esac
+  if [ -L "$target" ]; then
+    echo "Error: target path '$target' is a symlink; refusing to write through it." >&2
+    exit 1
+  fi
   target_dir=$(dirname "$target")
   [ -n "$target_dir" ] && mkdir -p "$target_dir"
   printf '%s\n' "$clean" > "$target"

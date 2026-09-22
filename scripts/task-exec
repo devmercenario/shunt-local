@@ -148,34 +148,50 @@ shunt_validate_exec_command() {
   local cmd="$1" label="$2"
   [ -z "$cmd" ] && return 0
 
+  # Default-deny on shell metacharacters that enable chaining, substitution, or
+  # backgrounding. This defeats the classic "curl x | sh", "$(cmd)", "cmd; cmd2",
+  # backtick, and "cmd &" prompt-injection payloads. Legitimate compound commands
+  # require --allow-unsafe (which itself requires SHUNT_ALLOW_UNSAFE=true).
+  case "$cmd" in
+    *'`'* | *'$('* | *';'* | *'|'* | *'&'*)
+      echo "🔒 BLOCKED: $label contains shell metacharacters (backtick, \$(, ;, |, &)." >&2
+      echo "   Command: $cmd" >&2
+      echo "   Use a simple test command only; bypass with --allow-unsafe + SHUNT_ALLOW_UNSAFE=true." >&2
+      return 1
+      ;;
+  esac
+
   # Blocklist of patterns that should never appear in test/rollback commands
   local -a blocked_patterns=(
-    'curl .*(||\|).*sh'
-    'wget .*(||\|).*sh'
-    'curl.*\| *sh'
-    'wget.*\| *sh'
-    'curl.*\| *bash'
-    'wget.*\| *bash'
-    '\bssh '
-    '\bnc '
-    '\bncat '
-    '\beval '
-    '\bexec '
-    'rm -rf /'
-    '\bdd if='
-    '\bmkfs'
-    'chmod 777'
-    '> /etc/'
-    '> /boot/'
-    '> /usr/'
-    '\bsudo '
-    '\bsu -c'
-    'base64.*decode.*\|'
-    "python[23]? -c.*import.*os\."
-    "ruby.*-e.*system"
-    "perl.*-e.*exec"
-    '\bcryptominer'
-    '\bxmrig'
+    'curl[[:space:]]'
+    'wget[[:space:]]'
+    'nc([[:space:]]|$)'
+    'ncat([[:space:]]|$)'
+    'ssh([[:space:]]|$)'
+    'scp([[:space:]]|$)'
+    'rsync([[:space:]]|$)'
+    'telnet([[:space:]]|$)'
+    'eval([[:space:]]|$)'
+    'exec([[:space:]]|$)'
+    'rm[[:space:]]+-rf[[:space:]]+/'
+    'dd([[:space:]]|$)'
+    'mkfs([[:space:]]|$)'
+    'chmod[[:space:]]+777'
+    'chmod[[:space:]]+-R[[:space:]]+777'
+    '>[[:space:]]*/etc/'
+    '>[[:space:]]*/boot/'
+    '>[[:space:]]*/usr/'
+    'sudo([[:space:]]|$)'
+    'doas([[:space:]]|$)'
+    'su[[:space:]]+-c'
+    'base64([[:space:]]|$)'
+    'cryptominer'
+    'xmrig'
+    'python[0-9.]*[[:space:]]+-c'
+    'ruby[[:space:]]+-e'
+    'perl[[:space:]]+-e'
+    'sh[[:space:]]+-c'
+    'bash[[:space:]]+-c'
   )
 
   for pattern in "${blocked_patterns[@]}"; do
@@ -183,7 +199,7 @@ shunt_validate_exec_command() {
       echo "🔒 BLOCKED: $label contains a dangerous pattern." >&2
       echo "   Command: $cmd" >&2
       echo "   Matched: $pattern" >&2
-      echo "   If this is legitimate, re-run with --allow-unsafe to bypass." >&2
+      echo "   If this is legitimate, bypass with --allow-unsafe + SHUNT_ALLOW_UNSAFE=true." >&2
       return 1
     fi
   done
@@ -215,7 +231,14 @@ fi
 
 shunt_preflight || exit 1
 
-# C1: Validate commands unless --allow-unsafe is set
+# C1: Validate commands unless --allow-unsafe is set.
+# A CLI flag alone is not enough to disable validation — a prompt-injected agent
+# could pass --allow-unsafe itself. It must be enabled in the operator's environment.
+if [ "$allow_unsafe" = "true" ] && [ "${SHUNT_ALLOW_UNSAFE:-}" != "true" ]; then
+  echo "⚠️  --allow-unsafe was passed but SHUNT_ALLOW_UNSAFE is not set; ignoring." >&2
+  allow_unsafe=false
+fi
+
 if [ "$allow_unsafe" != "true" ]; then
   shunt_validate_exec_command "$verification_command" "verification_command" || exit 1
   shunt_validate_exec_command "$rollback_command" "rollback_command" || exit 1
@@ -310,17 +333,23 @@ import sys, os, re
 response = sys.argv[1]
 targets = sys.argv[2:]
 
-# C3: Security — positive whitelist replaces incomplete system dirs blocklist
+# C3: Security — all writes restricted to the current working directory (symlinks
+# resolved). Declared --files targets are NOT implicitly trusted, because they are
+# chosen by the agent (which is prompt-injectable). Operators who genuinely need to
+# write outside the project tree must set SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true.
 CWD = os.path.realpath(os.getcwd())
 HOME = os.path.expanduser('~')
 ALLOWED_TARGETS = set(os.path.realpath(os.path.abspath(t)) for t in targets)
+ALLOW_OUTSIDE_CWD = os.environ.get('SHUNT_ALLOW_WRITES_OUTSIDE_CWD') == 'true'
 
 def is_safe_target(t):
     abs_t = os.path.realpath(os.path.abspath(t))
-    # Explicitly declared --files targets are always trusted (user/agent chose them)
-    if abs_t in ALLOWED_TARGETS:
+    # Opt-in escape hatch (human-set env var only). Still protected from home dotfiles.
+    if ALLOW_OUTSIDE_CWD and abs_t in ALLOWED_TARGETS:
+        if abs_t.startswith(HOME + os.sep + '.'):
+            return False
         return True
-    # LLM-generated paths: must be within the current working directory
+    # Default: must be within the current working directory
     if not (abs_t.startswith(CWD + os.sep) or abs_t == CWD):
         return False
     # Must not write to hidden files/dirs in home (e.g. ~/.ssh, ~/.gnupg)

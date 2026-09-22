@@ -56,7 +56,7 @@ function loadConfig(): {
   let cfgPath = '';
   if (process.env.SHUNT_CONFIG_PATH && fs.existsSync(process.env.SHUNT_CONFIG_PATH)) {
     cfgPath = process.env.SHUNT_CONFIG_PATH;
-  } else if (fs.existsSync('./shunt.config.json')) {
+  } else if (process.env.SHUNT_ALLOW_PROJECT_CONFIG === 'true' && fs.existsSync('./shunt.config.json')) {
     cfgPath = './shunt.config.json';
   } else {
     const userCfg = path.join(homeDir, '.config', 'shunt-local', 'config.json');
@@ -89,9 +89,24 @@ function loadConfig(): {
   return { enabled, minLines: isNaN(minLines) ? 350 : minLines, endpoint, hookViewFile, hookRunCommand };
 }
 
+function isLocalEndpoint(endpoint: string): boolean {
+  try {
+    const host = new URL(endpoint).hostname;
+    return ['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 async function isServerOnline(endpoint: string): Promise<boolean> {
   if (process.env.SHUNT_MOCK_ONLINE === '1') return true;
   if (process.env.SHUNT_MOCK_ONLINE === '0') return false;
+
+  // Fail closed on non-local endpoints unless explicitly allowed. This prevents a
+  // config-poisoned endpoint from becoming a beacon on every intercepted read/bash.
+  if (!isLocalEndpoint(endpoint) && process.env.SHUNT_ALLOW_REMOTE !== 'true') {
+    return false;
+  }
 
   try {
     let healthUrl = endpoint.replace(/\/+$/, '');

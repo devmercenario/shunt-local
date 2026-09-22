@@ -237,9 +237,11 @@ To remove `shunt-local` and restore your previous configuration at any time:
 `shunt-local` evaluates configuration in a strict hierarchical order:
 1. **Environment Variables** (`SHUNT_ENDPOINT`, `SHUNT_MODEL`, etc.)
 2. **Custom Config Path** (`SHUNT_CONFIG_PATH=/path/to/config.json`)
-3. **Project Config** (`./shunt.config.json`)
+3. **Project Config** (`./shunt.config.json`) — **requires `SHUNT_ALLOW_PROJECT_CONFIG=true`** (ignored otherwise, so a cloned repo cannot silently redirect your inference)
 4. **User Global Config** (`~/.config/shunt-local/config.json`)
 5. **Built-in Defaults**
+
+> 🔒 **Security defaults**: remote endpoints (HTTP *and* HTTPS) are blocked unless `SHUNT_ALLOW_REMOTE=true`; `--test-cmd`/`--rollback-cmd` reject shell metacharacters and dangerous patterns unless `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`; all file writes are confined to the working directory unless `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true`. See [`SECURITY.md`](./SECURITY.md) for the full list of opt-in escape hatches.
 
 ### Configuration File (`~/.config/shunt-local/config.json`)
 
