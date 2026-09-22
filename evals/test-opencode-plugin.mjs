@@ -120,9 +120,12 @@ async function run() {
   }
 
   // Test 8: Restricted system directory access should throw security error
+  const restrictedPath = process.platform === 'win32'
+    ? 'C:\\Windows\\System32\\drivers\\etc\\hosts'
+    : '/etc/passwd';
   try {
-    await hookFn({ tool: "read", sessionID: "s1", callID: "c8" }, { args: { filePath: "/etc/passwd" } });
-    check("security-restricted-path", "blocked", "allowed", "/etc/passwd should be denied");
+    await hookFn({ tool: "read", sessionID: "s1", callID: "c8" }, { args: { filePath: restrictedPath } });
+    check("security-restricted-path", "blocked", "allowed", `${restrictedPath} should be denied`);
   } catch (err) {
     const isSecurityErr = err.message.includes("restricted system directory");
     check("security-restricted-path", true, isSecurityErr, "Denies access to restricted system directory");

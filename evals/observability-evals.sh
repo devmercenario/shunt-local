@@ -51,8 +51,12 @@ check "audit-sandbox-field" "yes" "$(jq -r 'select(.tool=="task-exec") | has("sa
 check "audit-code-write" "written" "$(jq -r 'select(.tool=="code-write") | .status' "$AUDIT" 2>/dev/null | tail -1)" "code-write appends an audit record"
 
 if [ -f "$AUDIT" ]; then
-  mode=$(stat -c '%a' "$AUDIT" 2>/dev/null || stat -f '%Lp' "$AUDIT" 2>/dev/null || echo "")
-  check "audit-perms" "600" "$mode" "audit log is 0600"
+  if command -v cygpath >/dev/null 2>&1; then
+    check "audit-perms" "skip" "skip" "audit log permissions are not meaningful on Windows"
+  else
+    mode=$(stat -c '%a' "$AUDIT" 2>/dev/null || stat -f '%Lp' "$AUDIT" 2>/dev/null || echo "")
+    check "audit-perms" "600" "$mode" "audit log is 0600"
+  fi
 else
   check "audit-perms" "600" "missing" "audit log is 0600"
 fi

@@ -18,8 +18,11 @@ interface ToolExecuteOutput {
 
 const RESTRICTED_SYSTEM_DIRS = [
   '/etc', '/boot', '/root', '/sys', '/proc', '/dev', '/usr/bin', '/usr/sbin', '/bin', '/sbin',
-  // macOS resolves these through /private (e.g. /etc -> /private/etc).
-  '/private/etc', '/private/var', '/private/tmp', '/private/root',
+  // macOS resolves these through /private (e.g. /etc -> /private/etc). Do NOT
+  // list /private/var or /private/tmp: macOS temp dirs live there.
+  '/private/etc', '/private/var/root',
+  // Windows system locations (case-insensitive comparison below).
+  'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)', 'C:\\ProgramData',
 ];
 
 const SENSITIVE_NAMES = new Set([
@@ -53,19 +56,18 @@ function isSafeWritePath(filePath: string): boolean {
 function isSafePath(filePath: string): boolean {
   try {
     const resolved = fs.realpathSync(path.resolve(filePath));
+    const lower = resolved.toLowerCase();
     for (const sysDir of RESTRICTED_SYSTEM_DIRS) {
-      if (resolved === sysDir || resolved.startsWith(sysDir + path.sep)) {
-        return false;
-      }
+      const dir = sysDir.toLowerCase();
+      if (lower === dir || lower.startsWith(dir + path.sep)) return false;
     }
     return true;
   } catch {
-    // If path doesn't exist yet, check its resolved parent
-    const resolved = path.resolve(filePath);
+    // If path doesn't exist yet, check its resolved parent.
+    const resolved = path.resolve(filePath).toLowerCase();
     for (const sysDir of RESTRICTED_SYSTEM_DIRS) {
-      if (resolved === sysDir || resolved.startsWith(sysDir + path.sep)) {
-        return false;
-      }
+      const dir = sysDir.toLowerCase();
+      if (resolved === dir || resolved.startsWith(dir + path.sep)) return false;
     }
     return true;
   }

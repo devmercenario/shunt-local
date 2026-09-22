@@ -86,17 +86,11 @@ MOCK
   chmod +x "$mock_bin/curl"
 
   SPEC_FILE="$WORKDIR/task.json"
-  cat << JSON > "$SPEC_FILE"
-{
-  "task_id": "test-task-1",
-  "instruction": "Implement add(a, b) function",
-  "target_files": ["$(native "$TARGET_FILE")"],
-  "verification_command": "python3 -B $(native "$TEST_FILE")"
-}
-JSON
+  jq -n --arg tf "$(native "$TARGET_FILE")" --arg tc "python3 -B $(native "$TEST_FILE")" \
+    '{task_id:"test-task-1", instruction:"Implement add(a, b) function", target_files:[$tf], verification_command:$tc}' > "$SPEC_FILE"
 
   PATH="$mock_bin:$PATH" PYTHONPATH="$(native "$WORKDIR")" "$PLUGIN_DIR/scripts/task-exec" --spec-file "$SPEC_FILE" > "$WORKDIR/out1.json"
-)
+) || true
 
 status1=$(jq -r '.status' "$WORKDIR/out1.json")
 attempts1=$(jq -r '.attempts' "$WORKDIR/out1.json")
@@ -176,7 +170,7 @@ MOCK
     --files "$(native "$TARGET_FILE")" \
     --test-cmd "python3 -B $(native "$TEST_FILE")" \
     --max-retries 3 > "$WORKDIR/out2.json"
-)
+) || true
 
 status2=$(jq -r '.status' "$WORKDIR/out2.json")
 attempts2=$(jq -r '.attempts' "$WORKDIR/out2.json")
