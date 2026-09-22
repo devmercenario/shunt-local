@@ -59,14 +59,31 @@ Cloud Agent (untrusted input via prompt injection)
 | `SHUNT_ALLOW_PROJECT_CONFIG=true` | Honor a repo-local `./shunt.config.json`. |
 | `SHUNT_ALLOW_UNSAFE=true` | Let `--allow-unsafe` bypass command validation. |
 | `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true` | Let `--files` targets be written outside the working directory. |
+| `SHUNT_ALLOW_SENSITIVE_WRITES=true` | Allow writes to protected VCS/CI/credential/build files (`.git/`, `.github/`, `.env`, `package.json`, …). |
 | `SHUNT_ALLOW_UNTRUSTED_REMOTE=true` | Let `shunt-update` pull from non-GitHub/GitLab/Bitbucket remotes. |
+
+### Harness compatibility
+
+The hooks are emitted in each harness's native `PreToolUse` contract:
+
+| Harness | Hook registration | Allow | Deny |
+| :--- | :--- | :--- | :--- |
+| Antigravity (`agy`) | `~/.gemini/config/hooks.json` | `{"decision":"allow"}` | `{"decision":"deny","reason":…}` |
+| Claude Code | plugin `hooks/hooks.json` (`Read`, `Bash\|PowerShell`) | (no output → normal permission flow) | `hookSpecificOutput.permissionDecision:"deny"` |
+| Codex | `.codex-plugin/plugin.json` → `hooks/hooks.json` (`Bash`) | (no output) | `hookSpecificOutput.permissionDecision:"deny"` |
+| Cursor | `~/.cursor/hooks.json` (`preToolUse` `Read`/`Shell`) | `{"permission":"allow"}` | `{"permission":"deny","user_message":…,"agent_message":…}` |
+| OpenCode | `~/.config/opencode/plugins/shunt-local.ts` | return normally | `throw new Error(…)` |
+
+On the allow path, Claude Code and Codex receive **no decision** rather than `permissionDecision:"allow"`, so the plugin never silently auto-approves a tool call and the normal permission prompt still applies.
 
 ### Known Limitations
 
-- **No sandboxing**: Commands passed to `--test-cmd` and `--rollback-cmd` execute directly on the host OS. The blocklist + metacharacter default-deny stop obvious attacks but cannot guarantee safety against sophisticated payloads. Consider using `firejail` or `bwrap` for high-security environments.
+- **No sandboxing**: Commands passed to `--test-cmd` and `--rollback-cmd` execute directly on the host OS. Safe mode avoids a shell entirely and rejects network/reader/destructive programs, but a legitimate test runner (e.g. `npm test`, `pytest`) still executes project code. Consider using `firejail` or `bwrap` for high-security environments.
 - **Compound test commands require opt-in**: Legitimate shell compound commands (pipes, `&&`, variable expansion) are blocked by default; enable them deliberately with `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`.
+- **Untrusted model output**: The local model reads untrusted repository content and its output is labelled, not sanitized. A prompt injection embedded in a file can be reproduced in the model's reply; treat all delegated output as data and never let it drive command or file-write decisions without review.
 - **Bash hook coverage**: The bash read interceptor covers `cat`, `head`, `tail`, `less`, `more`, `bat`, `tac`, `nl`, and `pr`. Other file-reading commands (e.g., `awk`, `sed`, `python -c`) are not intercepted.
-- **Cursor integration**: Cursor support relies on `.cursorrules` rather than hard hook interception. The agent may choose to ignore delegation instructions.
+- **Cursor integration**: the installer registers native Cursor `preToolUse` hooks, but Cursor also offers advisory rules. The agent may still ignore the delegation guidance, and Cursor's `@`-style context attachments are not gated. Treat Cursor enforcement as best-effort.
+- **Coverage gaps**: the read gate only matches `Read`/`view_file` and shell reads. It does not intercept `Grep`, `Write`/`Edit`, MCP tools, or files pulled in via `@`/context attachments (the harness runs no `PreToolUse` hook for those). On Codex only the `Bash` path is gated; Codex file reads through MCP are not.
 
 ## Configuration Security
 

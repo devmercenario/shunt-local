@@ -140,7 +140,34 @@ if [ -d "$OPENCODE_CONFIG_DIR" ] || command -v opencode >/dev/null 2>&1; then
   echo "Installed OpenCode native plugin -> $OPENCODE_PLUGINS_DIR/shunt-local.ts"
 fi
 
-# 10. Verify PATH includes ~/.local/bin (important for macOS and non-standard Linux setups)
+# 10. Register Cursor native hooks when Cursor is present.
+#     Cursor expects {permission:"allow"|"deny"} and has its own matcher names,
+#     so the shared hooks are invoked with SHUNT_HOOK_HARNESS=cursor.
+CURSOR_CONFIG_DIR="${HOME}/.cursor"
+CURSOR_HOOKS_FILE="${CURSOR_CONFIG_DIR}/hooks.json"
+if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
+  mkdir -p "$CURSOR_CONFIG_DIR"
+  command -v jq >/dev/null 2>&1 || { echo "⚠️  jq is required to register Cursor hooks; skipping." >&2; }
+  if command -v jq >/dev/null 2>&1; then
+    [ -f "$CURSOR_HOOKS_FILE" ] || echo '{"version": 1, "hooks": {}}' > "$CURSOR_HOOKS_FILE"
+    tmp_cur=$(umask 077 && mktemp) || exit 1
+    jq \
+      --arg read_hook "SHUNT_HOOK_HARNESS=cursor $SCRIPT_DIR/hooks/check-file-size" \
+      --arg shell_hook "SHUNT_HOOK_HARNESS=cursor $SCRIPT_DIR/hooks/check-bash-read" \
+      '.version = 1
+       | .hooks = (.hooks // {})
+       | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("check-file-size|check-bash-read") | not)))
+       | .hooks.preToolUse += [
+           {"matcher": "Read", "command": $read_hook},
+           {"matcher": "Shell", "command": $shell_hook}
+         ]' \
+      "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
+    chmod 600 "$CURSOR_HOOKS_FILE" 2>/dev/null || true
+    echo "Registered Cursor hooks in $CURSOR_HOOKS_FILE"
+  fi
+fi
+
+# 11. Verify PATH includes ~/.local/bin (important for macOS and non-standard Linux setups)
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)

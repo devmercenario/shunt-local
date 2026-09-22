@@ -66,7 +66,24 @@ run_eval() {
   else
     result=$(echo "$input" | bash "$hook" 2>/dev/null)
   fi
-  actual=$(echo "$result" | jq -r '.decision')
+
+  # Normalize the per-harness decision contract:
+  #   - Claude Code / Codex: hookSpecificOutput.permissionDecision (empty = allow)
+  #   - Antigravity: top-level decision
+  #   - Cursor: permission
+  if [ -z "$result" ]; then
+    actual="allow"
+  else
+    actual=$(printf '%s' "$result" | jq -r '
+      if (.hookSpecificOutput.permissionDecision? // "") == "deny" then "block"
+      elif (.hookSpecificOutput.permissionDecision? // "") == "allow" then "allow"
+      elif (.decision? // "") == "deny" or (.decision? // "") == "block" then "block"
+      elif (.decision? // "") == "allow" or (.decision? // "") == "approve" then "allow"
+      elif (.permission? // "") == "deny" then "block"
+      elif (.permission? // "") == "allow" then "allow"
+      else "allow" end
+    ' 2>/dev/null)
+  fi
 
   if [ "$actual" = "$expected" ]; then
     printf "  \033[32mPASS\033[0m  %-30s %s\n" "$name" "$reason"
@@ -135,6 +152,8 @@ run_suite "$PLUGIN_DIR/hooks/check-bash-read" "$SCRIPT_DIR/bash-hook-evals.json"
 run_external_suite "$SCRIPT_DIR/config-evals.sh" "Config suite (shunt.config.json & env overrides)"
 run_external_suite "$SCRIPT_DIR/transport-evals.sh" "Transport suite (scripts/lib/local-llm.sh against mocked HTTP)"
 run_external_suite "$SCRIPT_DIR/task-exec-evals.sh" "Subtask worker suite (scripts/task-exec self-correction & rollback)"
+run_external_suite "$SCRIPT_DIR/security-evals.sh" "Security suite (command validation, write confinement, endpoint & supply chain)"
+run_external_suite "$SCRIPT_DIR/harness-compliance-evals.sh" "Harness compliance suite (Antigravity, Claude Code, Codex, Cursor)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 
 echo ""

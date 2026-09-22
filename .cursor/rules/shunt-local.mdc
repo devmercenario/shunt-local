@@ -1,6 +1,6 @@
 ---
 description: Offload large file reads (>350 lines) and mechanical coding subtasks to local LLM via shunt-local
-globs: *
+alwaysApply: true
 ---
 
 # shunt-local Integration Rules

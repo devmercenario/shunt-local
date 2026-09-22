@@ -1,6 +1,6 @@
 #!/bin/bash
-# Block full-file reads on large files, redirect to /bulk-reader skill
-# Compatible with both Google Antigravity (view_file) and Claude Code (Read)
+# Block full-file reads on large files, redirect to the /bulk-reader skill.
+# Harnesses: Antigravity (view_file), Claude Code (Read), Codex, Cursor (preToolUse Read).
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -13,53 +13,50 @@ if [ -f "$HOOK_DIR/../scripts/lib/local-llm.sh" ]; then
   . "$HOOK_DIR/../scripts/lib/local-llm.sh"
 fi
 
+# Read stdin once. Antigravity sends {toolCall:{name,args}}; Claude Code, Codex
+# and Cursor send tool_name/tool_input. SHUNT_HOOK_HARNESS may force the format.
+input=$(cat)
+is_antigravity=$(printf '%s' "$input" | jq -r 'has("toolCall")' 2>/dev/null || echo false)
+
+allow_now() {
+  shunt_emit_pretooluse_decision allow "" "$is_antigravity"
+  exit 0
+}
+
 # If master switch is OFF or view_file sub-hook is disabled, allow immediately
 if ! shunt_hook_is_enabled "view_file"; then
-  echo '{"decision": "allow"}'
-  exit 0
+  allow_now
 fi
 
 MIN_LINES="${SHUNT_MIN_LINES:-350}"
 case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
 
-input=$(cat)
-
-# Extract filepath and bounds from Antigravity (toolCall) or Claude Code (tool_input)
-file_path=$(echo "$input" | jq -r '.toolCall.args.AbsolutePath // .tool_input.file_path // empty')
-offset=$(echo "$input" | jq -r '.toolCall.args.StartLine // .tool_input.offset // empty')
-limit=$(echo "$input" | jq -r '.toolCall.args.EndLine // .tool_input.limit // empty')
-
-# Detect agent host format
-is_antigravity=$(echo "$input" | jq -r 'has("toolCall")')
-if [ "$is_antigravity" = "true" ]; then
-  block_decision="deny"
-else
-  block_decision="block"
-fi
+# Extract filepath and bounds from Antigravity (toolCall) or Claude/Codex/Cursor (tool_input)
+file_path=$(printf '%s' "$input" | jq -r '.toolCall.args.AbsolutePath // .tool_input.file_path // empty')
+offset=$(printf '%s' "$input" | jq -r '.toolCall.args.StartLine // .tool_input.offset // empty')
+limit=$(printf '%s' "$input" | jq -r '.toolCall.args.EndLine // .tool_input.limit // empty')
 
 # Allow targeted reads (offset/limit set to meaningful non-zero values)
 if { [ -n "$offset" ] && [ "$offset" != "0" ]; } || { [ -n "$limit" ] && [ "$limit" != "0" ]; }; then
-  echo '{"decision": "allow"}'
-  exit 0
+  allow_now
 fi
 
 # Allow if file doesn't exist or path is empty
 if [ -z "$file_path" ] || [ ! -f "$file_path" ]; then
-  echo '{"decision": "allow"}'
-  exit 0
+  allow_now
 fi
 
 # Allow small files — delegation overhead isn't worth it
 lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
 if [ "$lines" -le "$MIN_LINES" ]; then
-  echo '{"decision": "allow"}'
-  exit 0
+  allow_now
 fi
 
 # If local LLM server is offline, fail-open to cloud model
 if ! shunt_is_online; then
-  echo '{"decision": "allow"}'
-  exit 0
+  allow_now
 fi
 
-echo "{\"decision\": \"${block_decision}\", \"reason\": \"File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of reading it directly. If you need exact content for editing, re-read with a line range for just the section you need.\"}"
+reason="File is ${lines} lines (threshold: ${MIN_LINES}). Use the /bulk-reader skill to delegate this read to your local LLM instead of reading it directly. If you need exact content for editing, re-read with a line range for just the section you need."
+shunt_emit_pretooluse_decision deny "$reason" "$is_antigravity"
+exit 0
