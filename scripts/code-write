@@ -45,6 +45,11 @@ if [ ! -f "$reference" ]; then
   echo "Error: reference file not found: $reference" >&2
   exit 1
 fi
+if ! shunt_read_allowed "$reference"; then
+  echo "Error: refusing to read reference '$reference' outside the working directory." >&2
+  echo "  Set SHUNT_ALLOW_READS_OUTSIDE_CWD=true to allow this." >&2
+  exit 1
+fi
 
 shunt_preflight || exit 1
 shunt_tmpfile message_file || exit 1

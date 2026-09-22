@@ -39,6 +39,11 @@ for path in "${paths[@]}"; do
     echo "Error: file not found or unreadable: $path" >&2
     exit 1
   fi
+  if ! shunt_read_allowed "$path"; then
+    echo "Error: refusing to read '$path' outside the working directory." >&2
+    echo "  Set SHUNT_ALLOW_READS_OUTSIDE_CWD=true to allow this." >&2
+    exit 1
+  fi
 done
 
 shunt_preflight || exit 1

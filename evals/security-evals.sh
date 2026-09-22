@@ -182,9 +182,8 @@ check "untrusted-remote-refused" "yes" "$upd" "suffix-spoofed host (github.com.e
 # ---- 5. API key must not appear in the process argument vector ----
 : > "$WORKDIR/curl_args.log"
 set +e
-CURL_ARG_LOG="$WORKDIR/curl_args.log" SHUNT_API_KEY="sk-topsecret-123" \
-  PATH="$WORKDIR/bin:$PATH" \
-  "$PLUGIN_DIR/scripts/bulk-read" --question "q" --paths "$WORKDIR/work/mod.py" \
+( cd "$WORKDIR/work" && CURL_ARG_LOG="$WORKDIR/curl_args.log" SHUNT_API_KEY="sk-topsecret-123" PATH="$WORKDIR/bin:$PATH" \
+    "$PLUGIN_DIR/scripts/bulk-read" --question "q" --paths "$WORKDIR/work/mod.py" ) \
   > /dev/null 2>&1
 set -e
 if grep -q -- "--config" "$WORKDIR/curl_args.log" && ! grep -q "sk-topsecret-123" "$WORKDIR/curl_args.log"; then key_safe=yes; else key_safe=no; fi

@@ -156,6 +156,7 @@ run_external_suite "$SCRIPT_DIR/security-evals.sh" "Security suite (command vali
 run_external_suite "$SCRIPT_DIR/sandbox-evals.sh" "Sandbox suite (bwrap/firejail/docker command isolation)"
 run_external_suite "$SCRIPT_DIR/update-verify-evals.sh" "Update verification suite (trusted host + signatures)"
 run_external_suite "$SCRIPT_DIR/apply-mode-evals.sh" "Apply-mode suite (confirmation gate & dry-run)"
+run_external_suite "$SCRIPT_DIR/redaction-evals.sh" "Redaction & confinement suite (secrets, reads, keyring)"
 run_external_suite "$SCRIPT_DIR/harness-compliance-evals.sh" "Harness compliance suite (Antigravity, Claude Code, Codex, Cursor)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 

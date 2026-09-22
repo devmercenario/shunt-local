@@ -241,10 +241,12 @@ echo "" >> "$context_file"
 if [ ${#read_files[@]} -gt 0 ]; then
   echo "### REFERENCE CONTEXT FILES" >> "$context_file"
   for rf in "${read_files[@]}"; do
-    if [ -f "$rf" ]; then
+    if [ -f "$rf" ] && shunt_read_allowed "$rf"; then
       echo "=== Reference File: $rf ===" >> "$context_file"
       cat -- "$rf" >> "$context_file"
       echo "" >> "$context_file"
+    elif [ -f "$rf" ]; then
+      echo "=== Reference File: $rf (Refused: outside working directory) ===" >> "$context_file"
     else
       echo "=== Reference File: $rf (Not found on disk) ===" >> "$context_file"
     fi
@@ -256,7 +258,7 @@ if [ -n "$verification_command" ]; then
   set -f
   for word in $verification_command; do
     if [[ "$word" =~ \.(test|spec)\.[a-zA-Z0-9]+$ ]] || [[ "$word" =~ test_.*\.py$ ]]; then
-      if [ -f "$word" ] && [[ ! " ${read_files[*]} " =~ " ${word} " ]]; then
+      if [ -f "$word" ] && shunt_read_allowed "$word" && [[ ! " ${read_files[*]} " =~ " ${word} " ]]; then
         echo "=== Test File Reference: $word ===" >> "$context_file"
         cat -- "$word" >> "$context_file"
         echo "" >> "$context_file"
@@ -270,10 +272,12 @@ fi
 # Add target files
 echo "### TARGET FILES" >> "$context_file"
 for tf in "${target_files[@]}"; do
-  if [ -f "$tf" ]; then
+  if [ -f "$tf" ] && shunt_read_allowed "$tf"; then
     echo "=== Target File (Existing): $tf ===" >> "$context_file"
     cat -- "$tf" >> "$context_file"
     echo "" >> "$context_file"
+  elif [ -f "$tf" ]; then
+    echo "=== Target File (Existing, refused: outside working directory): $tf ===" >> "$context_file"
   else
     echo "=== Target File (New file to create): $tf ===" >> "$context_file"
     echo "(This file does not exist yet. Generate its complete contents.)" >> "$context_file"

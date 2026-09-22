@@ -9,6 +9,9 @@ DEFAULT_TEMPERATURE="0.2"
 DEFAULT_MIN_LINES=350
 DEFAULT_TIMEOUT_SECONDS=180
 
+# Directory this library lives in (for helper scripts such as redact.py).
+SHUNT_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+
 shunt_load_config() {
   local cfg_file=""
   if [ -n "${SHUNT_CONFIG_PATH:-}" ] && [ -f "${SHUNT_CONFIG_PATH}" ]; then
@@ -52,6 +55,16 @@ shunt_load_config() {
   SHUNT_ENABLED="${SHUNT_ENABLED:-true}"
   SHUNT_HOOK_VIEW_FILE="${SHUNT_HOOK_VIEW_FILE:-true}"
   SHUNT_HOOK_RUN_COMMAND="${SHUNT_HOOK_RUN_COMMAND:-true}"
+
+  # Secret resolution: prefer an explicit key, then a command (e.g. a keyring
+  # lookup), then a file. SHUNT_API_KEY_CMD is operator-controlled (like
+  # SHUNT_ALLOW_UNSAFE) and must never be set from untrusted input.
+  if [ -z "$SHUNT_API_KEY" ] && [ -n "${SHUNT_API_KEY_CMD:-}" ]; then
+    SHUNT_API_KEY=$(eval "$SHUNT_API_KEY_CMD" 2>/dev/null || true)
+  fi
+  if [ -z "$SHUNT_API_KEY" ] && [ -n "${SHUNT_API_KEY_FILE:-}" ] && [ -r "${SHUNT_API_KEY_FILE}" ]; then
+    SHUNT_API_KEY=$(cat -- "${SHUNT_API_KEY_FILE}" 2>/dev/null || true)
+  fi
 }
 
 shunt_load_config
@@ -245,6 +258,51 @@ shunt_preflight() {
   return 0
 }
 
+# Resolve a path to its physical location (portable; python3 is a dependency).
+shunt_realpath() {
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || printf '%s' "$1"
+}
+
+# Reads are confined to the working directory unless explicitly opted out.
+shunt_read_allowed() {
+  local p="$1" real cwd
+  cwd=$(pwd -P)
+  real=$(shunt_realpath "$p")
+  case "$real" in
+    "$cwd"|"$cwd"/*) return 0 ;;
+  esac
+  [ "${SHUNT_ALLOW_READS_OUTSIDE_CWD:-}" = "true" ] && return 0
+  [ "${SHUNT_ALLOW_WRITES_OUTSIDE_CWD:-}" = "true" ] && return 0
+  return 1
+}
+
+# Redact secrets from $1 into $2. Returns non-zero when SHUNT_BLOCK_ON_SECRETS
+# is enabled and a secret was found.
+shunt_redact_file() {
+  local in="$1" out="$2"
+  if [ "${SHUNT_REDACT_SECRETS:-true}" != "true" ]; then
+    cp -- "$in" "$out"
+    return 0
+  fi
+  local err_file
+  shunt_tmpfile err_file || return 1
+  if ! python3 "$SHUNT_LIB_DIR/redact.py" < "$in" > "$out" 2> "$err_file"; then
+    echo "Error: secret redaction failed." >&2
+    return 1
+  fi
+  if [ -s "$err_file" ]; then
+    local summary
+    summary=$(tr -d '\n' < "$err_file")
+    if [ "${SHUNT_BLOCK_ON_SECRETS:-false}" = "true" ]; then
+      echo "🔒 BLOCKED: secrets detected in the payload; refusing to send to the endpoint." >&2
+      echo "   Detected: $summary" >&2
+      return 1
+    fi
+    echo "⚠️  shunt-local: redacted secrets before sending to the endpoint ($summary)." >&2
+  fi
+  return 0
+}
+
 shunt_is_online() {
   [ "${__SHUNT_TEST_MOCK_ONLINE:-}" = "1" ] && return 0
 
@@ -377,10 +435,19 @@ shunt_invoke() {
 
   shunt_tmpfile payload_file || return 1
 
+  # Redact secrets before anything leaves the machine.
+  local user_file="$message_file"
+  if [ "${SHUNT_REDACT_SECRETS:-true}" = "true" ]; then
+    local redacted_file
+    shunt_tmpfile redacted_file || return 1
+    shunt_redact_file "$message_file" "$redacted_file" || return 1
+    user_file="$redacted_file"
+  fi
+
   jq -n \
     --arg model "$SHUNT_MODEL" \
     --arg sys "$system_prompt" \
-    --rawfile user "$message_file" \
+    --rawfile user "$user_file" \
     --argjson temp "$SHUNT_TEMPERATURE" \
     '{
       model: $model,
@@ -399,9 +466,17 @@ shunt_invoke_messages() {
   local messages_file="$1"
   shunt_tmpfile payload_file || return 1
 
+  local msgs_file="$messages_file"
+  if [ "${SHUNT_REDACT_SECRETS:-true}" = "true" ]; then
+    local redacted_msgs
+    shunt_tmpfile redacted_msgs || return 1
+    shunt_redact_file "$messages_file" "$redacted_msgs" || return 1
+    msgs_file="$redacted_msgs"
+  fi
+
   jq -n \
     --arg model "$SHUNT_MODEL" \
-    --slurpfile msgs "$messages_file" \
+    --slurpfile msgs "$msgs_file" \
     --argjson temp "$SHUNT_TEMPERATURE" \
     '{
       model: $model,
