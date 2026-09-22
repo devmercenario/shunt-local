@@ -249,7 +249,7 @@ def resolve_working_dir(args, targets=None):
             or proc_cwd == temp_dir or proc_cwd.startswith(temp_dir + os.sep)):
         if targets:
             for t in targets:
-                abs_t = os.path.realpath(t)
+                abs_t = shunt_paths.realpath(t)
                 cur = os.path.dirname(abs_t) if (os.path.isfile(abs_t) or not os.path.exists(abs_t)) else abs_t
                 while cur and cur != os.path.dirname(cur) and cur != home:
                     if os.path.exists(os.path.join(cur, ".git")):
@@ -261,10 +261,13 @@ def resolve_working_dir(args, targets=None):
                 with open(trusted_file, "r", encoding="utf-8") as tf_handle:
                     tf = json.load(tf_handle)
                 for t in targets:
-                    abs_t = os.path.realpath(t)
+                    abs_t = shunt_paths.realpath(t)
                     for folder, status in tf.items():
-                        if status == "TRUST_FOLDER" and (abs_t.startswith(folder + os.sep) or abs_t == folder):
-                            return folder
+                        if status != "TRUST_FOLDER":
+                            continue
+                        folder_native = shunt_paths.realpath(folder)
+                        if abs_t.startswith(folder_native + os.sep) or abs_t == folder_native:
+                            return folder_native
             except Exception:
                 pass
     return proc_cwd
