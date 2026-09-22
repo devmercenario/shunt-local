@@ -1,0 +1,110 @@
+#!/bin/bash
+# Update (or verify) the version across every distribution manifest.
+#
+# Usage:
+#   scripts/bump-version <x.y.z>      # set the version everywhere
+#   scripts/bump-version --check      # verify all manifests agree
+#   scripts/bump-version --check x.y.z
+#   scripts/bump-version --root <dir> ...   # operate on another tree (tests)
+
+set -euo pipefail
+
+ROOT=""
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root) ROOT="$2"; shift 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+if [ -z "$ROOT" ]; then
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+MANIFESTS=(
+  "plugin.json"
+  ".claude-plugin/plugin.json"
+  ".codex-plugin/plugin.json"
+  ".claude-plugin/marketplace.json"
+  "plugins/opencode/package.json"
+)
+
+MODE="set"
+VERSION=""
+if [ "${ARGS[0]:-}" = "--check" ]; then
+  MODE="check"
+  VERSION="${ARGS[1]:-}"
+else
+  VERSION="${ARGS[0]:-}"
+fi
+
+if [ "$MODE" = "set" ] && [ -z "$VERSION" ]; then
+  echo "Usage: bump-version <x.y.z> | --check [x.y.z]" >&2
+  exit 2
+fi
+if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Error: invalid version '$VERSION' (expected x.y.z)" >&2
+  exit 2
+fi
+
+python3 - "$ROOT" "$MODE" "$VERSION" "${MANIFESTS[@]}" <<'PY'
+import json
+import sys
+
+root, mode, version = sys.argv[1], sys.argv[2], sys.argv[3]
+relative = sys.argv[4:]
+
+def read(path):
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+def versions(data):
+    found = {str(data.get("version", ""))}
+    meta = data.get("metadata")
+    if isinstance(meta, dict) and "version" in meta:
+        found.add(str(meta["version"]))
+    for plugin in data.get("plugins", []) or []:
+        if isinstance(plugin, dict) and "version" in plugin:
+            found.add(str(plugin["version"]))
+    return {v for v in found if v}
+
+if mode == "check":
+    seen = {}
+    problems = []
+    for rel in relative:
+        path = f"{root}/{rel}"
+        try:
+            data = read(path)
+        except FileNotFoundError:
+            problems.append(f"missing: {rel}")
+            continue
+        for value in versions(data):
+            seen.setdefault(value, []).append(rel)
+    if len(seen) != 1:
+        print("version mismatch: " + "; ".join(f"{v} -> {', '.join(f)}" for v, f in seen.items()))
+        sys.exit(1)
+    only = next(iter(seen))
+    if version and only != version:
+        print(f"version is {only}, expected {version}")
+        sys.exit(1)
+    print(only)
+    sys.exit(0)
+
+for rel in relative:
+    path = f"{root}/{rel}"
+    try:
+        data = read(path)
+    except FileNotFoundError:
+        continue
+    data["version"] = version
+    meta = data.get("metadata")
+    if isinstance(meta, dict):
+        meta["version"] = version
+    for plugin in data.get("plugins", []) or []:
+        if isinstance(plugin, dict):
+            plugin["version"] = version
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+        handle.write("\n")
+    print(f"set {rel} -> {version}")
+PY

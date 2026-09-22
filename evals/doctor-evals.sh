@@ -65,6 +65,19 @@ out=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor 2>&1 ||
 check "config-perms" "yes" "$(printf '%s' "$out" | grep -q 'config-perms' && echo yes || echo no)" "loose config permissions reported"
 check "json-warn-status" "warn" "$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor --json 2>/dev/null | jq -r '.status' || true)" "loose perms yield warn status"
 
+# Cursor matcher completeness.
+mkdir -p "$WORKDIR/home/.cursor"
+cat > "$WORKDIR/home/.cursor/hooks.json" <<JSON
+{"version":1,"hooks":{"preToolUse":[{"matcher":"Read","command":"python3 $PLUGIN_DIR/hooks/shunt_guard.py --harness cursor --kind read"}]}}
+JSON
+out=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor 2>&1 || true)
+check "cursor-missing-matchers" "yes" "$(printf '%s' "$out" | grep -q 'harness-cursor.*missing matchers' && echo yes || echo no)" "incomplete Cursor matchers are reported"
+cat > "$WORKDIR/home/.cursor/hooks.json" <<JSON
+{"version":1,"hooks":{"preToolUse":[{"matcher":"Read","command":"python3 $PLUGIN_DIR/hooks/shunt_guard.py --harness cursor --kind read"},{"matcher":"Grep","command":"x shunt_guard.py --kind grep"}],"beforeReadFile":[{"matcher":"Read","command":"x shunt_guard.py"}]}}
+JSON
+out=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor 2>&1 || true)
+check "cursor-complete" "yes" "$(printf '%s' "$out" | grep -q 'harness-cursor.*hooks + matchers registered' && echo yes || echo no)" "complete Cursor registration passes"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

@@ -171,6 +171,7 @@ run_external_suite "$SCRIPT_DIR/doctor-evals.sh" "Doctor suite (installation dia
 run_external_suite "$SCRIPT_DIR/stats-evals.sh" "Stats suite (audit-log summary)"
 run_external_suite "$SCRIPT_DIR/contract-evals.sh" "Contract suite (per-harness decision schema)"
 run_external_suite "$SCRIPT_DIR/packaging-evals.sh" "Packaging suite (marketplace & package manifests)"
+run_external_suite "$SCRIPT_DIR/version-evals.sh" "Version suite (manifest version discipline)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 
 echo ""

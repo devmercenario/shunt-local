@@ -109,7 +109,15 @@ shunt_doctor() {
   # 7. Harness registration
   if command -v agy >/dev/null 2>&1; then
     if [ -f "$HOME/.gemini/config/hooks.json" ] && grep -q '"shunt-local"' "$HOME/.gemini/config/hooks.json" 2>/dev/null; then
-      _rec pass harness-antigravity "hooks registered"
+      missing=""
+      for m in view_file run_command write_to_file grep_search; do
+        grep -q "$m" "$HOME/.gemini/config/hooks.json" 2>/dev/null || missing="$missing $m"
+      done
+      if [ -n "$missing" ]; then
+        _rec warn harness-antigravity "hooks registered but missing matchers:$missing"
+      else
+        _rec pass harness-antigravity "hooks + matchers registered"
+      fi
     else
       _rec warn harness-antigravity "agy present but hooks not registered"
     fi
@@ -120,7 +128,15 @@ shunt_doctor() {
     _rec warn harness-opencode "opencode present but plugin missing"
   fi
   if [ -f "$HOME/.cursor/hooks.json" ] && grep -q 'shunt_guard.py' "$HOME/.cursor/hooks.json" 2>/dev/null; then
-    _rec pass harness-cursor "hooks registered"
+    missing=""
+    for m in preToolUse beforeReadFile Grep; do
+      grep -q "\"$m\"" "$HOME/.cursor/hooks.json" 2>/dev/null || missing="$missing $m"
+    done
+    if [ -n "$missing" ]; then
+      _rec warn harness-cursor "hooks registered but missing matchers:$missing"
+    else
+      _rec pass harness-cursor "hooks + matchers registered"
+    fi
   elif [ -d "$HOME/.cursor" ]; then
     _rec warn harness-cursor "cursor present but hooks missing"
   fi
