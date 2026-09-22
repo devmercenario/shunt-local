@@ -72,6 +72,12 @@ check "skill-installed" "yes" \
 HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/install.sh" >/dev/null 2>&1
 check "idempotent-cursor" "4" "$(jq -r '[.hooks.preToolUse[]] | length' "$CURSOR")" "re-install does not duplicate hooks"
 
+# shunt-update shares register.sh; --no-pull must re-register the same configs.
+HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/scripts/shunt-update" --no-pull > "$WORKDIR/update.log" 2>&1
+check "update-exit" "0" "$?" "shunt-update --no-pull completes"
+check "update-gemini" "yes" "$(jq -e '."shunt-local"' "$GEMINI" >/dev/null 2>&1 && echo yes || echo no)" "shunt-update re-registers Antigravity hooks"
+check "update-cursor" "4" "$(jq -r '[.hooks.preToolUse[]] | length' "$CURSOR")" "shunt-update re-registers Cursor hooks"
+
 # Uninstall removes what it added.
 set +e
 HOME="$HOME_DIR" PATH="$WORKDIR/bin:$PATH" bash "$PLUGIN_DIR/uninstall.sh" > "$WORKDIR/uninstall.log" 2>&1

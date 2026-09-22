@@ -115,7 +115,7 @@ check "claude-python-fallback" "yes" \
   "$(jq -r '.hooks.PreToolUse[].hooks[].command' "$PLUGIN_DIR/hooks/hooks.json" | grep -q '|| python ' && echo yes || echo no)" \
   "Claude hook falls back to python when python3 is missing"
 check "antigravity-write-matcher" "yes" \
-  "$(grep -q 'write_to_file' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "$(grep -q 'write_to_file' "$PLUGIN_DIR/scripts/lib/register.sh" && echo yes || echo no)" \
   "installer registers Antigravity write matcher"
 
 # ---- Sensitive reads + Cursor beforeReadFile ----
@@ -129,7 +129,7 @@ br=$(python3 -c "import json; print(json.dumps({'file_path':'$WORKDIR/large.txt'
 g=$(guard_run "$br" --harness cursor --kind read)
 check "guard-before-readfile" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')" "Cursor beforeReadFile blocks sensitive attachments"
 check "cursor-before-readfile-registered" "yes" \
-  "$(grep -q 'beforeReadFile' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "$(grep -q 'beforeReadFile' "$PLUGIN_DIR/scripts/lib/register.sh" && echo yes || echo no)" \
   "installer registers Cursor beforeReadFile"
 
 # ---- Grep guidance ----
@@ -184,10 +184,10 @@ check "cursor-rule-frontmatter" "alwaysapply" "$mdc_check" "Cursor rule frontmat
 
 # Installer must register Cursor hooks with the cursor output format.
 check "install-cursor-hooks" "yes" \
-  "$(grep -q -- '--harness cursor' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
+  "$(grep -q 'register.sh' "$PLUGIN_DIR/install.sh" && grep -q -- '--harness cursor' "$PLUGIN_DIR/scripts/lib/register.sh" && echo yes || echo no)" \
   "install.sh registers Cursor hooks with cursor format"
 check "update-cursor-hooks" "yes" \
-  "$(grep -q -- '--harness cursor' "$PLUGIN_DIR/scripts/shunt-update" && echo yes || echo no)" \
+  "$(grep -q 'register.sh' "$PLUGIN_DIR/scripts/shunt-update" && grep -q -- '--harness cursor' "$PLUGIN_DIR/scripts/lib/register.sh" && echo yes || echo no)" \
   "shunt-update refreshes Cursor hooks"
 
 # Skills must have name + description frontmatter (Agent Skills requirement).

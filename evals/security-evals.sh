@@ -167,6 +167,7 @@ HOSTREPO="$WORKDIR/hostrepo"
 mkdir -p "$HOSTREPO/scripts/lib" "$HOSTREPO/plugins/opencode"
 cp "$PLUGIN_DIR/scripts/shunt-update" "$HOSTREPO/scripts/shunt-update"
 cp "$PLUGIN_DIR/scripts/lib/update-verify.sh" "$HOSTREPO/scripts/lib/update-verify.sh"
+cp "$PLUGIN_DIR/scripts/lib/register.sh" "$HOSTREPO/scripts/lib/register.sh"
 cp "$PLUGIN_DIR/plugins/opencode/shunt-local.ts" "$HOSTREPO/plugins/opencode/shunt-local.ts"
 (
   cd "$HOSTREPO"

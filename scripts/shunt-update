@@ -1,6 +1,6 @@
 #!/bin/bash
-# Updater script for shunt-local (Google Antigravity & Claude Code)
-# Updates hooks, skills, and binaries from the repository.
+# Updater for shunt-local: refresh hooks, skills and binaries from the repo.
+# Registration lives in scripts/lib/register.sh (shared with install.sh).
 
 set -euo pipefail
 
@@ -13,16 +13,11 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SKILLS_DIR="${HOME}/.agents/skills"
-BIN_DIR="${HOME}/.local/bin"
-GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
-HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
-TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
-INSTALL_ROOT_FILE="${HOME}/.config/shunt-local/install_root"
-
-# Shared, unit-tested helpers (remote allowlist + update verification).
+# Shared helpers: remote allowlist + signature verification + registration.
 # shellcheck source=lib/update-verify.sh
 . "$SCRIPT_DIR/lib/update-verify.sh"
+# shellcheck source=lib/register.sh
+. "$SCRIPT_DIR/lib/register.sh"
 
 DO_PULL=true
 DO_APPLY=false
@@ -31,22 +26,10 @@ REQUIRE_VERIFY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-pull)
-      DO_PULL=false
-      shift
-      ;;
-    --pull)
-      DO_PULL=true
-      shift
-      ;;
-    --yes|-y)
-      DO_APPLY=true
-      shift
-      ;;
-    --verify)
-      REQUIRE_VERIFY=true
-      shift
-      ;;
+    --no-pull) DO_PULL=false; shift ;;
+    --pull) DO_PULL=true; shift ;;
+    --yes|-y) DO_APPLY=true; shift ;;
+    --verify) REQUIRE_VERIFY=true; shift ;;
     -h|--help)
       echo "Usage: shunt-update [--pull | --no-pull] [--yes] [--verify]"
       echo "Updates shunt-local hooks, skills, and binaries from the repository."
@@ -56,22 +39,17 @@ while [[ $# -gt 0 ]]; do
       echo "  --no-pull    Skip the remote fetch entirely; re-install from current files."
       exit 0
       ;;
-    *)
-      shift
-      ;;
+    *) shift ;;
   esac
 done
 
 echo "Updating shunt-local..."
 
-# Allow the operator to require signature verification via the environment.
 if [ "${SHUNT_UPDATE_REQUIRE_SIGNATURE:-}" = "true" ]; then
   REQUIRE_VERIFY=true
 fi
 
-# 1. Fetch and pull latest changes from remote repository (supply-chain hardened).
-# The remote must be a well-known code host (unless explicitly opted in), and
-# fetching is a dry-run by default: changes are only applied with --yes.
+# 1. Fetch (supply-chain hardened: trusted host, dry-run by default).
 if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if git -C "$REPO_DIR" remote | grep -q 'origin'; then
@@ -116,151 +94,21 @@ if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   fi
 fi
 
-# 2. Update binaries in ~/.local/bin
-mkdir -p "$BIN_DIR"
-for bin_script in bulk-read code-write shunt-update shunt-local task-exec; do
-  target="$REPO_DIR/scripts/$bin_script"
-  if [ -f "$target" ]; then
-    chmod +x "$target"
-    ln -sf "$target" "$BIN_DIR/$bin_script"
-    echo "Linked binary '$bin_script' -> $BIN_DIR/$bin_script"
-  fi
-done
+# 2-6. Binaries, skills, trust and hooks (shared with install.sh).
+shunt_link_binaries "$REPO_DIR"
+shunt_copy_skills "$REPO_DIR"
+shunt_trust_repo "$REPO_DIR"
+shunt_register_antigravity_hooks "$REPO_DIR"
+shunt_install_opencode_plugin "$REPO_DIR"
+shunt_register_cursor_hooks "$REPO_DIR"
 
-# 3. Update skills in ~/.agents/skills (copy to keep realpath inside ~/.agents/)
-mkdir -p "$SKILLS_DIR"
-for skill in "$REPO_DIR"/skills/*; do
-  if [ -d "$skill" ]; then
-    skill_name="$(basename "$skill")"
-    rm -rf "$SKILLS_DIR/$skill_name"
-    cp -r "$skill" "$SKILLS_DIR/$skill_name"
-    echo "Updated skill '$skill_name' in $SKILLS_DIR/$skill_name"
-  fi
-done
-
-# 4. Register the repository as trusted in Antigravity only when it is safely
-#    owned (never trust a directory writable by group/other).
-if [ -d "${HOME}/.gemini" ] && command -v jq >/dev/null 2>&1; then
-  repo_owner=$(stat -c '%u' "$REPO_DIR" 2>/dev/null || stat -f '%u' "$REPO_DIR" 2>/dev/null || echo "")
-  if [ -n "$repo_owner" ] && [ "$repo_owner" != "$(id -u)" ]; then
-    echo "⚠️  Not registering $REPO_DIR as trusted: it is owned by uid $repo_owner (not you)." >&2
-  elif [ -n "$(find "$REPO_DIR" -maxdepth 0 \( -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
-    echo "⚠️  Not registering $REPO_DIR as trusted: it is writable by group/other." >&2
-  else
-    if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
-      echo "{}" > "$TRUSTED_FOLDERS_FILE"
-    fi
-    tmp_tf=$(umask 077 && mktemp) || exit 1
-    jq --arg dir "$REPO_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
-    printf '%s' "$REPO_DIR" > "$INSTALL_ROOT_FILE"
-    chmod 600 "$INSTALL_ROOT_FILE" 2>/dev/null || true
-    echo "Ensured $REPO_DIR is trusted in $TRUSTED_FOLDERS_FILE"
-  fi
-fi
-
-# 5. Register/update PreToolUse lifecycle hooks in ~/.gemini/config/hooks.json
-if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
-  mkdir -p "$GEMINI_CONFIG_DIR"
-  if [ ! -f "$HOOKS_FILE" ]; then
-    echo "{}" > "$HOOKS_FILE"
-  fi
-
-  tmp_hooks=$(umask 077 && mktemp) || exit 1
-  jq \
-    --arg size_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind read" \
-    --arg bash_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind bash" \
-    --arg write_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind write" \
-    --arg grep_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --kind grep" \
-    '. + {
-      "shunt-local": {
-        "PreToolUse": [
-          {
-            "matcher": "view_file",
-            "hooks": [
-              {
-                "type": "command",
-                "command": $size_hook
-              }
-            ]
-          },
-          {
-            "matcher": "run_command",
-            "hooks": [
-              {
-                "type": "command",
-                "command": $bash_hook
-              }
-            ]
-          },
-          {
-            "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
-            "hooks": [
-              {
-                "type": "command",
-                "command": $write_hook
-              }
-            ]
-          },
-          {
-            "matcher": "grep_search",
-            "hooks": [
-              {
-                "type": "command",
-                "command": $grep_hook
-              }
-            ]
-          }
-        ]
-      }
-    }' "$HOOKS_FILE" > "$tmp_hooks" && mv "$tmp_hooks" "$HOOKS_FILE"
-  echo "Updated PreToolUse hooks in $HOOKS_FILE"
-fi
-
-# 6. Re-register with Antigravity CLI (agy) if present
+# 7. Re-register with Antigravity / Claude Code CLIs if present.
 if command -v agy >/dev/null 2>&1; then
   agy plugin install "$REPO_DIR" 2>/dev/null || true
   echo "Re-registered plugin with agy"
 fi
-
-# 7. Update OpenCode plugin if present
-OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
-OPENCODE_PLUGINS_DIR="${OPENCODE_CONFIG_DIR}/plugins"
-if [ -d "$OPENCODE_CONFIG_DIR" ] || command -v opencode >/dev/null 2>&1; then
-  mkdir -p "$OPENCODE_PLUGINS_DIR"
-  chmod 700 "$OPENCODE_PLUGINS_DIR" 2>/dev/null || true
-  cp "$REPO_DIR/plugins/opencode/shunt-local.ts" "$OPENCODE_PLUGINS_DIR/shunt-local.ts"
-  chmod 600 "$OPENCODE_PLUGINS_DIR/shunt-local.ts" 2>/dev/null || true
-  echo "Updated OpenCode native plugin in $OPENCODE_PLUGINS_DIR/shunt-local.ts"
-fi
-
-# 8. Update Cursor native hooks if present
-CURSOR_CONFIG_DIR="${HOME}/.cursor"
-CURSOR_HOOKS_FILE="${CURSOR_CONFIG_DIR}/hooks.json"
-if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
-  if command -v jq >/dev/null 2>&1; then
-    mkdir -p "$CURSOR_CONFIG_DIR"
-    [ -f "$CURSOR_HOOKS_FILE" ] || echo '{"version": 1, "hooks": {}}' > "$CURSOR_HOOKS_FILE"
-    tmp_cur=$(umask 077 && mktemp) || exit 1
-    jq \
-      --arg read_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind read" \
-      --arg shell_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind bash" \
-      --arg write_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind write" \
-      --arg grep_hook "python3 \"$REPO_DIR/hooks/shunt_guard.py\" --harness cursor --kind grep" \
-      '.version = 1
-       | .hooks = (.hooks // {})
-       | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("shunt_guard.py") | not)))
-       | .hooks.preToolUse += [
-           {"matcher": "Read", "command": $read_hook},
-           {"matcher": "Shell", "command": $shell_hook},
-           {"matcher": "Write", "command": $write_hook},
-           {"matcher": "Grep", "command": $grep_hook}
-         ]
-       | .hooks.beforeReadFile = ((.hooks.beforeReadFile // []) | map(select((.command // "") | test("shunt_guard.py") | not)))
-       | .hooks.beforeReadFile += [ {"matcher": "Read", "command": $read_hook} ]' \
-      "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
-    chmod 600 "$CURSOR_HOOKS_FILE" 2>/dev/null || true
-    echo "Updated Cursor hooks in $CURSOR_HOOKS_FILE"
-  fi
+if command -v claude >/dev/null 2>&1; then
+  claude plugin install "$REPO_DIR" 2>/dev/null || claude plugin add "$REPO_DIR" 2>/dev/null || true
 fi
 
 echo ""

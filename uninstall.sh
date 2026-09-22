@@ -1,18 +1,13 @@
 #!/bin/bash
-# Uninstaller script for shunt-local
+# Uninstaller for shunt-local.
 
 set -euo pipefail
 
-SKILLS_DIR="${HOME}/.agents/skills"
-GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
-HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
-TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/register.sh
+. "$SCRIPT_DIR/scripts/lib/register.sh"
+
 CONFIG_DIR="${HOME}/.config/shunt-local"
-INSTALL_ROOT_FILE="${CONFIG_DIR}/install_root"
-CURSOR_HOOKS_FILE="${HOME}/.cursor/hooks.json"
-
-BIN_DIR="${HOME}/.local/bin"
-
 PURGE=false
 
 while [[ $# -gt 0 ]]; do
@@ -29,63 +24,32 @@ done
 
 echo "Uninstalling shunt-local..."
 
-# 1. Remove binaries
-rm -f "$BIN_DIR/bulk-read" "$BIN_DIR/code-write" "$BIN_DIR/shunt-update" "$BIN_DIR/shunt-local" "$BIN_DIR/task-exec"
-echo "Removed binaries from $BIN_DIR"
+# 1. Binaries and skills
+shunt_unlink_binaries
+echo "Removed binaries from ${HOME}/.local/bin"
+shunt_remove_skills
+echo "Removed skills from ${HOME}/.agents/skills"
 
-# 2. Remove skills
-rm -rf "$SKILLS_DIR/bulk-reader" "$SKILLS_DIR/code-writer" "$SKILLS_DIR/subtask-worker"
-echo "Removed skills from $SKILLS_DIR"
-
-# 3. Clean state files
+# 2. Clean state files
 rm -f "${CONFIG_DIR}/disabled"
 
-# 4. Unregister from agy plugin if present
+# 3. Unregister from the harness CLIs if present
 if command -v agy >/dev/null 2>&1; then
   agy plugin uninstall shunt-local 2>/dev/null || true
   echo "Unregistered plugin from agy"
 fi
-
-# 5. Unregister from Claude Code if present
 if command -v claude >/dev/null 2>&1; then
   claude plugin uninstall shunt-local 2>/dev/null || claude plugin remove shunt-local 2>/dev/null || true
   echo "Unregistered plugin from claude"
 fi
 
-# 6. Remove hooks from ~/.gemini/config/hooks.json
-if [ -f "$HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
-  tmp_hooks=$(umask 077 && mktemp) || exit 1
-  jq 'del(."shunt-local")' "$HOOKS_FILE" > "$tmp_hooks" && mv "$tmp_hooks" "$HOOKS_FILE"
-  echo "Removed hooks from $HOOKS_FILE"
-fi
+# 4. Remove hooks, trust entry and OpenCode plugin
+shunt_unregister_antigravity_hooks
+shunt_untrust_repo
+shunt_remove_opencode_plugin
+shunt_unregister_cursor_hooks
 
-# 7. Remove OpenCode plugin if present
-OPENCODE_PLUGIN="${HOME}/.config/opencode/plugins/shunt-local.ts"
-if [ -f "$OPENCODE_PLUGIN" ]; then
-  rm -f "$OPENCODE_PLUGIN"
-  echo "Removed OpenCode plugin from $OPENCODE_PLUGIN"
-fi
-
-# 8. Remove the trusted-folder entry recorded at install time (a trusted folder
-#    executes code on every agent tool call, so it must not outlive the plugin).
-if [ -f "$INSTALL_ROOT_FILE" ] && [ -f "$TRUSTED_FOLDERS_FILE" ] && command -v jq >/dev/null 2>&1; then
-  recorded_root=$(cat "$INSTALL_ROOT_FILE" 2>/dev/null || true)
-  if [ -n "$recorded_root" ]; then
-    tmp_tf=$(umask 077 && mktemp) || exit 1
-    jq --arg dir "$recorded_root" 'del(.[$dir])' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
-    echo "Removed trust entry for $recorded_root from $TRUSTED_FOLDERS_FILE"
-  fi
-fi
-
-# 9. Remove Cursor native hooks registered by the installer
-if [ -f "$CURSOR_HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
-  tmp_cur=$(umask 077 && mktemp) || exit 1
-  jq '.hooks.preToolUse = ((.hooks.preToolUse // []) | map(select((.command // "") | test("shunt_guard.py|check-file-size|check-bash-read") | not)))' \
-    "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
-  echo "Removed shunt-local hooks from $CURSOR_HOOKS_FILE"
-fi
-
-# 10. Purge configuration (removes API keys and all user config)
+# 5. Purge configuration (removes API keys and all user config)
 if [ "$PURGE" = "true" ]; then
   if [ -d "$CONFIG_DIR" ]; then
     rm -rf "$CONFIG_DIR"
