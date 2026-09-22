@@ -555,7 +555,7 @@ done
 # Calculate diff summary if git is available
 diff_summary=""
 if command -v git >/dev/null 2>&1 && [ ${#modified_files[@]} -gt 0 ]; then
-  diff_summary=$(git diff --stat -- ${modified_files[@]+"${modified_files[@]}"} 2>/dev/null | tail -1 | xargs || true)
+  diff_summary=$(git diff --stat -- ${modified_files[@]+"${modified_files[@]}"} 2>/dev/null | tail -1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
 fi
 [ -z "$diff_summary" ] && diff_summary="Modified ${#modified_files[@]} file(s)"
 

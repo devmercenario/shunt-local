@@ -103,6 +103,21 @@ check "list-contains-miss" "1" "$(libcheck $'shunt_list_contains x "a\nb\nc"')" 
 # Regex metacharacters in a name must not be interpreted (no =~ regex bug).
 check "list-regex-safe" "1" "$(libcheck $'shunt_list_contains "a.c" "abc\nxyz"')" "membership is literal, not regex"
 
+# --- every redaction pattern ---
+check_redacted() { # name, secret, [probe]
+  local name="$1" secret="$2" probe="${3:-$2}" out leaked
+  out=$(printf '%s' "$secret" | python3 "$PLUGIN_DIR/scripts/lib/redact.py" 2>/dev/null)
+  if printf '%s' "$out" | grep -qF -- "$probe"; then leaked=yes; else leaked=no; fi
+  check "redact-$name" "no" "$leaked" "$name is redacted"
+}
+check_redacted private-key "$(printf -- '-----BEGIN RSA PRIVATE KEY-----\nMIIBprivateKEYmaterial\n-----END RSA PRIVATE KEY-----')" MIIBprivateKEYmaterial
+check_redacted jwt "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+check_redacted google-api-key "AIza$(printf 'A%.0s' $(seq 1 35))"
+check_redacted slack-token "xoxb-abcdefghij"
+check_redacted npm-token "npm_$(printf 'a%.0s' $(seq 1 36))"
+check_redacted anthropic-key "sk-ant-$(printf 'a%.0s' $(seq 1 24))"
+check_redacted openai-key "sk-$(printf 'a%.0s' $(seq 1 24))"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

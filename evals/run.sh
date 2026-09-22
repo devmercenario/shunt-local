@@ -64,11 +64,11 @@ run_eval() {
 
   local result actual
   if [ -n "$env_json" ] && [ "$env_json" != "null" ]; then
-    local env_cmd=""
+    local -a env_args=()
     while IFS='=' read -r key val; do
-      env_cmd="$env_cmd $key=$val"
+      env_args+=("$key=$val")
     done < <(echo "$env_json" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
-    result=$(echo "$input" | env $env_cmd bash "$hook" 2>/dev/null)
+    result=$(echo "$input" | env ${env_args[@]+"${env_args[@]}"} bash "$hook" 2>/dev/null)
   else
     result=$(echo "$input" | bash "$hook" 2>/dev/null)
   fi
@@ -170,6 +170,7 @@ run_external_suite "$SCRIPT_DIR/portability-evals.sh" "Portability suite (Window
 run_external_suite "$SCRIPT_DIR/rtk-interop-evals.sh" "RTK interop suite (independent tools)"
 run_external_suite "$SCRIPT_DIR/doctor-evals.sh" "Doctor suite (installation diagnostics)"
 run_external_suite "$SCRIPT_DIR/stats-evals.sh" "Stats suite (audit-log summary)"
+run_external_suite "$SCRIPT_DIR/cli-evals.sh" "CLI suite (on/off/hook/status)"
 run_external_suite "$SCRIPT_DIR/contract-evals.sh" "Contract suite (per-harness decision schema)"
 run_external_suite "$SCRIPT_DIR/packaging-evals.sh" "Packaging suite (marketplace & package manifests)"
 run_external_suite "$SCRIPT_DIR/version-evals.sh" "Version suite (manifest version discipline)"
