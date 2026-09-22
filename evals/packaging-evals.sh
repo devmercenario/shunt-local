@@ -31,19 +31,24 @@ check "opencode-package" "opencode-shunt-local" "$(jq -r '.name // empty' "$PLUG
 check "opencode-main-exists" "yes" "$([ -f "$PLUGIN_DIR/plugins/opencode/$(jq -r '.main' "$PLUGIN_DIR/plugins/opencode/package.json")" ] && echo yes || echo no)" "OpenCode main file exists"
 check "settings-deny" "true" "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_DIR/settings.json")" "settings.json ships deny rules"
 
-# The three sensitive-name copies must not drift (canonical txt vs OpenCode TS).
-txt_names=$(grep -v '^#' "$PLUGIN_DIR/scripts/lib/sensitive-names.txt" | tr -d '\r' | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)
+# The two sensitive-name copies must not drift (canonical txt vs OpenCode TS).
+txt_file="$PLUGIN_DIR/scripts/lib/sensitive-names.txt"
 ts_file="$PLUGIN_DIR/plugins/opencode/shunt-local.ts"
-if command -v cygpath >/dev/null 2>&1; then ts_file=$(cygpath -w "$ts_file" | tr -d '\r'); fi
-ts_names=$(python3 - "$ts_file" <<'PY'
+if command -v cygpath >/dev/null 2>&1; then
+  txt_file=$(cygpath -w "$txt_file" | tr -d '\r')
+  ts_file=$(cygpath -w "$ts_file" | tr -d '\r')
+fi
+same=$(python3 - "$txt_file" "$ts_file" <<'PY'
 import re, sys
-s = open(sys.argv[1], encoding="utf-8").read()
-m = re.search(r"new Set\(\[(.*?)\]\)", s, re.S)
-names = sorted(set(re.findall(r"'([^']+)'", m.group(1))))
-print("\n".join(names))
+with open(sys.argv[1], encoding="utf-8") as handle:
+    txt = {line.strip() for line in handle
+           if line.strip() and not line.strip().startswith("#")}
+src = open(sys.argv[2], encoding="utf-8").read()
+match = re.search(r"new Set\(\[(.*?)\]\)", src, re.S)
+ts = set(re.findall(r"'([^']+)'", match.group(1))) if match else set()
+print("yes" if txt == ts else "no")
 PY
 )
-if [ "$txt_names" = "$ts_names" ]; then same=yes; else same=no; fi
 check "sensitive-list-sync" "yes" "$same" "OpenCode sensitive list matches the canonical file"
 check "architecture-doc" "yes" \
   "$([ -f "$PLUGIN_DIR/docs/architecture.md" ] && [ -f "$PLUGIN_DIR/docs/threat-model.md" ] && echo yes || echo no)" \
