@@ -54,9 +54,9 @@ The single guard implementation is `hooks/shunt_guard.py`; the bash scripts in
 
 ## Interaction with RTK
 
-[RTK](https://github.com/) is a separate CLI proxy that filters/summarizes
-command output before it reaches the agent. It is **independent** of
-shunt-local, but the two can overlap at the harness layer.
+`RTK` is a separate CLI proxy that filters/summarizes command output before it
+reaches the agent. It is **independent** of shunt-local, but the two can
+overlap at the harness layer.
 
 - **No coupling**: shunt-local never calls `rtk`. `bulk-read`, `code-write` and
   `task-exec` read files directly and send the content to the local endpoint;
