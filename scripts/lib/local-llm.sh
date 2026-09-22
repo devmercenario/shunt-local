@@ -308,6 +308,7 @@ shunt_is_sensitive_name() {
   local file="${SHUNT_LIB_DIR:-}/sensitive-names.txt"
   [ -f "$file" ] || return 1
   while IFS= read -r line; do
+    line="${line%$'\r'}"
     [ -z "$line" ] && continue
     case "$line" in \#*) continue ;; esac
     [ "$line" = "$name" ] && return 0

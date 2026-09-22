@@ -1,0 +1,13 @@
+# Normalize line endings to LF on checkout. Without this, Windows checkouts
+# (core.autocrlf=true) turn data files like scripts/lib/sensitive-names.txt into
+# CRLF, which breaks exact-match lookups and shell shebangs.
+* text=auto eol=lf
+
+# Binary assets (keep as-is).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.gz binary
+*.tar binary

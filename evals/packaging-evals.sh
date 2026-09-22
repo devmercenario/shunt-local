@@ -32,7 +32,7 @@ check "opencode-main-exists" "yes" "$([ -f "$PLUGIN_DIR/plugins/opencode/$(jq -r
 check "settings-deny" "true" "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_DIR/settings.json")" "settings.json ships deny rules"
 
 # The three sensitive-name copies must not drift (canonical txt vs OpenCode TS).
-txt_names=$(grep -v '^#' "$PLUGIN_DIR/scripts/lib/sensitive-names.txt" | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)
+txt_names=$(grep -v '^#' "$PLUGIN_DIR/scripts/lib/sensitive-names.txt" | tr -d '\r' | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)
 ts_names=$(python3 - "$PLUGIN_DIR/plugins/opencode/shunt-local.ts" <<'PY'
 import re, sys
 s = open(sys.argv[1], encoding="utf-8").read()

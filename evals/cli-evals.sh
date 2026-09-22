@@ -41,7 +41,11 @@ check "unknown-command" "1" "$(set +e; HOME="$WORKDIR/home" bash "$CLI" nonsense
 HOME="$WORKDIR/home" bash "$CLI" on >/dev/null 2>&1
 check "on-config" "yes" "$([ -f "$CONFIG" ] && echo yes || echo no)" "on creates config.json"
 check "on-enabled" "true" "$(jq -r '.enabled' "$CONFIG")" "on sets enabled=true"
-check "on-perms" "yes" "$(mode=$(stat -c '%a' "$CONFIG" 2>/dev/null || stat -f '%Lp' "$CONFIG"); [ "$mode" = "600" ] && echo yes || echo no)" "config is 0600"
+if command -v cygpath >/dev/null 2>&1; then
+  check "on-perms" "skip" "skip" "config permissions are not meaningful on Windows"
+else
+  check "on-perms" "yes" "$(mode=$(stat -c '%a' "$CONFIG" 2>/dev/null || stat -f '%Lp' "$CONFIG"); [ "$mode" = "600" ] && echo yes || echo no)" "config is 0600"
+fi
 
 # off creates the disabled marker and flips enabled.
 HOME="$WORKDIR/home" bash "$CLI" off >/dev/null 2>&1
