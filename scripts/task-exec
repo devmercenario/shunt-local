@@ -321,7 +321,7 @@ jq -n \
 apply_changes() {
   local raw_response="$1"
   SHUNT_LIB_DIR="$(shunt_to_native "$SHUNT_LIB_DIR")" python3 - << 'PYEOF' "$raw_response" "${target_files[@]}"
-import sys, os, re, hashlib
+import sys, os, re, hashlib, tempfile
 sys.path.insert(0, os.environ.get('SHUNT_LIB_DIR', ''))
 import paths
 
@@ -358,9 +358,22 @@ def emit_write(target, content):
             f.write(content)
         print(f"STAGED_WRITE:{target}:{staged}")
     else:
-        os.makedirs(os.path.dirname(os.path.abspath(target)), exist_ok=True)
-        with open(target, 'w', encoding='utf-8') as f:
-            f.write(content)
+        # Write to a sibling temp file then os.replace: this is atomic and, unlike
+        # open(target, 'w'), replaces the directory entry instead of following a
+        # symlink, so a symlinked target cannot redirect the write (TOCTOU).
+        target_dir = os.path.dirname(os.path.abspath(target))
+        os.makedirs(target_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=target_dir, prefix='.shunt-', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(content)
+            os.replace(tmp_path, target)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         print(f"WROTE_FILE:{target}")
 
 # 1. Look for SEARCH/REPLACE blocks first

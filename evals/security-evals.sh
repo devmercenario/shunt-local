@@ -124,6 +124,16 @@ set +e
 set -e
 check "ci-file-not-written" "absent" "$([ -f "$WORKDIR/work/.github/workflows/ci.yml" ] && echo present || echo absent)" "task-exec refuses writes into .github/"
 
+# task-exec must not write *through* a symlink target (TOCTOU / symlink safety).
+mkdir -p "$WORKDIR/linkwork"
+printf 'ORIGINAL\n' > "$WORKDIR/linkwork/real.py"
+ln -s real.py "$WORKDIR/linkwork/link.py"
+( cd "$WORKDIR/linkwork" && HOME="$WORKDIR/home" SHUNT_MOCK_ONLINE=1 PATH="$WORKDIR/bin:$PATH" \
+    "$PLUGIN_DIR/scripts/task-exec" --instruction "noop" --files "$WORKDIR/linkwork/link.py" --yes \
+    </dev/null >/dev/null 2>&1 ) || true
+check "symlink-target-untouched" "ORIGINAL" "$(head -1 "$WORKDIR/linkwork/real.py")" "symlinked target is not written through"
+check "symlink-replaced" "file" "$([ -L "$WORKDIR/linkwork/link.py" ] && echo link || echo file)" "the symlink itself is replaced atomically"
+
 # code-write must refuse home dotfiles even when CWD == HOME.
 (
   cd "$WORKDIR/home"

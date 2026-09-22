@@ -78,6 +78,10 @@ check "cygpath-strips-cr" "no" "$cr_present" "shunt_to_native strips CR from cyg
 trimmed=$(HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; shunt_trim '  C:\\a\\b  '")
 check "trim-preserves-backslash" 'C:\a\b' "$trimmed" "shunt_trim preserves backslashes"
 
+# 4. paths.explain() returns a human-readable reason (used in guard deny messages).
+explain=$(python3 -c "import sys; sys.path.insert(0, '$PLUGIN_DIR/scripts/lib'); import paths; print(paths.explain('/etc/passwd', cwd='/tmp/proj'))" 2>/dev/null)
+check "paths-explain-outside" "yes" "$(printf '%s' "$explain" | grep -q 'outside the working directory' && echo yes || echo no)" "explain reports an outside-CWD path"
+
 # PowerShell installer exists.
 check "install-ps1" "yes" "$([ -f "$PLUGIN_DIR/install.ps1" ] && echo yes || echo no)" "install.ps1 is present"
 
