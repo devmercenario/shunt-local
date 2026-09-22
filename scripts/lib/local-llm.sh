@@ -412,3 +412,209 @@ shunt_invoke_messages() {
 
   shunt_invoke_payload "$payload_file"
 }
+
+# ---------------------------------------------------------------------------
+# Command validation (shared with the regression/fuzz suite)
+# ---------------------------------------------------------------------------
+# C1: Security — validate commands against dangerous patterns before execution
+shunt_validate_exec_command() {
+  local cmd="$1" label="$2"
+  [ -z "$cmd" ] && return 0
+
+  # Explicitly reject control characters (newline, CR, tab) that can be used to
+  # chain commands. Harmless without a shell, but rejected for clarity.
+  case "$cmd" in
+    *$'\n'*|*$'\r'*|*$'\t'*)
+      echo "🔒 BLOCKED: $label contains a control character (newline/CR/tab)." >&2
+      return 1
+      ;;
+  esac
+
+  # Tokenize literally (no shell, no globbing, no expansion). `read -r -a` only
+  # performs word splitting, so $VAR, ${...}, $(...), backticks, redirections,
+  # pipes, ;, && and newlines are inert once we exec the argv directly below.
+  local -a argv=()
+  read -r -a argv <<< "$cmd" || true
+  if [ ${#argv[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  # Strict per-token allowlist. Any shell metacharacter, quote, expansion,
+  # newline or glob character makes the token invalid; such commands require
+  # the explicit --allow-unsafe + SHUNT_ALLOW_UNSAFE=true escape hatch.
+  local tok
+  for tok in "${argv[@]}"; do
+    if ! [[ "$tok" =~ ^[A-Za-z0-9_./:=@+-]+$ ]]; then
+      echo "🔒 BLOCKED: $label contains an unsafe token: '$tok'" >&2
+      echo "   Only simple commands are allowed by default." >&2
+      echo "   Bypass with --allow-unsafe + SHUNT_ALLOW_UNSAFE=true if truly needed." >&2
+      return 1
+    fi
+  done
+
+  # Program denylist: network clients (exfiltration), file readers/writers whose
+  # output could leak secrets into test_output, and persistence/interpreter tools.
+  local prog="${argv[0]##*/}"
+  prog=$(printf '%s' "$prog" | tr '[:upper:]' '[:lower:]')
+  case "$prog" in
+    curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp|lftp|smbclient|\
+    sh|bash|zsh|dash|ksh|fish|env|eval|exec|source|\
+    systemctl|service|reboot|shutdown|poweroff|halt|init|crontab|at|batch|\
+    sudo|doas|su|pkexec|\
+    rm|rmdir|unlink|dd|mkfs|mke2fs|shred|truncate|chmod|chown|chgrp|\
+    cp|mv|ln|install|mkfifo|mknod|mount|umount|kill|pkill|killall|\
+    cat|tac|head|tail|less|more|bat|nl|pr|sed|awk|gawk|mawk|grep|egrep|fgrep|rg|ag|\
+    cut|sort|uniq|tr|strings|xxd|od|hexdump|base64|openssl|gpg|age|\
+    env|printenv|set|ls|find|locate|tar|zip|unzip|7z|git|hg|svn|\
+    docker|podman|kubectl|helm|terraform|\
+    cryptominer|xmrig)
+      echo "🔒 BLOCKED: '$prog' is not allowed as a verification/rollback command." >&2
+      echo "   Use a real test runner (npm/pytest/go/cargo/make/...) or --allow-unsafe." >&2
+      return 1
+      ;;
+  esac
+
+  # Inline interpreter evaluation (defense in depth; the allowlist above already
+  # rejects the punctuation these payloads need). Only flags that clearly mean
+  # "run this string as code" are blocked, per interpreter.
+  local -a rest=("${argv[@]:1}")
+  for tok in "${rest[@]}"; do
+    case "$prog" in
+      python|python2|python3|python3.*)
+        case "$tok" in -c|--command) inline_eval=1 ;; esac ;;
+      node|nodejs|deno|bun)
+        case "$tok" in -e|--eval|-p|--print) inline_eval=1 ;; esac ;;
+      ruby)
+        case "$tok" in -e) inline_eval=1 ;; esac ;;
+      perl)
+        case "$tok" in -e|-E) inline_eval=1 ;; esac ;;
+      php)
+        case "$tok" in -r) inline_eval=1 ;; esac ;;
+      lua)
+        case "$tok" in -e) inline_eval=1 ;; esac ;;
+    esac
+    if [ "${inline_eval:-0}" = "1" ]; then
+      echo "🔒 BLOCKED: $label uses inline interpreter evaluation ('$tok')." >&2
+      echo "   Pass a script file instead, or use --allow-unsafe." >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+# Execute a command that has already passed shunt_validate_exec_command. Never
+# invokes a shell: the command is tokenized literally and executed as argv, so
+# metacharacters, expansions and redirections cannot take effect.
+shunt_run_simple_command() {
+  local cmd="$1"
+  local -a argv=()
+  read -r -a argv <<< "$cmd" || true
+  [ ${#argv[@]} -eq 0 ] && return 0
+  "${argv[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# Sandboxed execution
+# ---------------------------------------------------------------------------
+# SHUNT_SANDBOX          = auto | bwrap | firejail | docker | podman | none (default auto)
+# SHUNT_SANDBOX_NETWORK  = true to keep network access (default false)
+# SHUNT_SANDBOX_IMAGE    = image for the docker/podman backends
+# SHUNT_SANDBOX_STRICT   = true to refuse to run when no sandbox is available
+SHUNT_SANDBOX_BACKEND=""
+SHUNT_SANDBOX_ARGV=()
+
+shunt_sandbox_probe() {
+  case "$1" in
+    bwrap)
+      command -v bwrap >/dev/null 2>&1 || return 1
+      bwrap --ro-bind / / --dev /dev --proc /proc -- /bin/true >/dev/null 2>&1
+      ;;
+    firejail) command -v firejail >/dev/null 2>&1 ;;
+    docker|podman) command -v "$1" >/dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+
+shunt_sandbox_backend() {
+  local wanted="${SHUNT_SANDBOX:-auto}"
+  case "$wanted" in
+    none) printf 'none'; return 0 ;;
+    bwrap|firejail|docker|podman)
+      if shunt_sandbox_probe "$wanted"; then printf '%s' "$wanted"; return 0; fi
+      printf 'none'; return 0
+      ;;
+    auto)
+      local b
+      for b in bwrap firejail; do
+        if shunt_sandbox_probe "$b"; then printf '%s' "$b"; return 0; fi
+      done
+      printf 'none'; return 0
+      ;;
+    *)
+      echo "Error: invalid SHUNT_SANDBOX='$wanted' (use auto|bwrap|firejail|docker|podman|none)." >&2
+      return 1
+      ;;
+  esac
+}
+
+# Wrap an argv into SHUNT_SANDBOX_ARGV. Usage: shunt_sandbox_wrap <argv...>
+shunt_sandbox_wrap() {
+  local backend
+  backend=$(shunt_sandbox_backend) || return 1
+  SHUNT_SANDBOX_BACKEND="$backend"
+  local cwd
+  cwd="${SHUNT_SANDBOX_CWD:-$(pwd -P)}"
+  local -a base=("$@")
+  local -a f=()
+  case "$backend" in
+    bwrap)
+      f=(--die-with-parent --unshare-pid --unshare-ipc --unshare-uts)
+      [ "${SHUNT_SANDBOX_NETWORK:-false}" != "true" ] && f+=(--unshare-net)
+      f+=(--ro-bind / / --dev /dev --proc /proc)
+      [ "${SHUNT_SANDBOX_ALLOW_TMP:-true}" = "true" ] && f+=(--tmpfs /tmp)
+      f+=(--bind "$cwd" "$cwd" --chdir "$cwd")
+      SHUNT_SANDBOX_ARGV=(bwrap "${f[@]}" -- "${base[@]}")
+      ;;
+    firejail)
+      f=(--quiet --private-tmp --read-only=/ --read-write="$cwd" --chdir="$cwd")
+      [ "${SHUNT_SANDBOX_NETWORK:-false}" != "true" ] && f+=(--net=none)
+      SHUNT_SANDBOX_ARGV=(firejail "${f[@]}" -- "${base[@]}")
+      ;;
+    docker|podman)
+      local img="${SHUNT_SANDBOX_IMAGE:-}"
+      if [ -z "$img" ]; then
+        echo "Error: SHUNT_SANDBOX_IMAGE is required for the $backend sandbox backend." >&2
+        return 1
+      fi
+      f=(run --rm -v "$cwd:$cwd" -w "$cwd")
+      [ "${SHUNT_SANDBOX_NETWORK:-false}" != "true" ] && f+=(--network none)
+      SHUNT_SANDBOX_ARGV=("$backend" "${f[@]}" "$img" "${base[@]}")
+      ;;
+    *)
+      SHUNT_SANDBOX_ARGV=("${base[@]}")
+      ;;
+  esac
+  return 0
+}
+
+# Run a validated command. mode = argv (no shell) | shell (bash -c, unsafe path).
+shunt_run_command() {
+  local cmd="$1" mode="${2:-argv}"
+  local -a base=()
+  if [ "$mode" = "shell" ]; then
+    base=(bash -c "$cmd")
+  else
+    read -r -a base <<< "$cmd" || true
+    [ ${#base[@]} -eq 0 ] && return 0
+  fi
+  shunt_sandbox_wrap "${base[@]}" || return 1
+  if [ "$SHUNT_SANDBOX_BACKEND" = "none" ]; then
+    if [ "${SHUNT_SANDBOX_STRICT:-false}" = "true" ]; then
+      echo "Error: no sandbox backend available and SHUNT_SANDBOX_STRICT=true." >&2
+      return 1
+    fi
+    echo "⚠️  shunt-local: running without a sandbox; set SHUNT_SANDBOX_STRICT=true to refuse." >&2
+  fi
+  "${SHUNT_SANDBOX_ARGV[@]}"
+}
