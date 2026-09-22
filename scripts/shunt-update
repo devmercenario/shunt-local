@@ -94,6 +94,20 @@ if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   fi
 fi
 
+# 1b. Curl-installed copy (no .git): refresh by re-downloading the snapshot.
+if [ "$DO_PULL" = true ] && [ ! -d "$REPO_DIR/.git" ]; then
+  if [ "$DO_APPLY" = true ]; then
+    echo "Downloading the latest snapshot from the remote repository..."
+    if shunt_download_snapshot "$REPO_DIR" main; then
+      echo "Applied the latest snapshot."
+    else
+      echo "⚠️  Download failed; continuing with the current files." >&2
+    fi
+  else
+    echo "ℹ️  Dry run: this copy was installed via curl; pass --yes to download and apply the latest snapshot."
+  fi
+fi
+
 # 2-6. Binaries, skills, trust and hooks (shared with install.sh).
 shunt_link_binaries "$REPO_DIR"
 shunt_copy_skills "$REPO_DIR"

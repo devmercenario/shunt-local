@@ -190,14 +190,25 @@ sequenceDiagram
 
 ### Quick Automated Install
 
-Run the automated installer in your cloned repository:
+**One-liner (recommended)** — downloads the latest snapshot and installs it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devmercenario/shunt-local/main/install.sh | bash
+```
+
+The snapshot is kept at `~/.local/share/shunt-local` (override with
+`SHUNT_INSTALL_DIR`). Update it later with `shunt-update --yes`.
+
+**From a clone** — for development or a pinned version:
 
 ```bash
 git clone https://github.com/devmercenario/shunt-local.git ~/Work/shunt-local
 cd ~/Work/shunt-local
-chmod +x install.sh
 ./install.sh
 ```
+
+`install.sh` fast-forwards the clone to `origin/main` before installing
+(opt out with `SHUNT_NO_PULL=1`).
 
 The installer will:
 1. Validate system dependencies (`curl`, `jq`, `python3`).
@@ -227,8 +238,11 @@ The installer will:
 To remove `shunt-local` and restore your previous configuration at any time:
 
 ```bash
-./uninstall.sh
+./uninstall.sh                     # from a clone
+bash ~/.local/share/shunt-local/uninstall.sh   # curl-installed copy
 ```
+
+Add `--purge` to also delete `~/.config/shunt-local` (including any stored API keys).
 
 ---
 

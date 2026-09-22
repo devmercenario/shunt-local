@@ -5,6 +5,35 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Curl bootstrap: when this script is piped from the web (`curl -fsSL ... | bash`)
+# there is no repository alongside it, so download the latest snapshot into a
+# persistent install root and re-run the real installer from there. Clones run
+# this file directly, where scripts/lib/register.sh exists and this is skipped.
+if [ ! -f "$SCRIPT_DIR/scripts/lib/register.sh" ]; then
+  INSTALL_ROOT="${SHUNT_INSTALL_DIR:-$HOME/.local/share/shunt-local}"
+  DOWNLOAD_URL="${SHUNT_DOWNLOAD_URL:-https://codeload.github.com/devmercenario/shunt-local/tar.gz/refs/heads/main}"
+  echo "shunt-local installer (curl): downloading the latest snapshot..."
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  if ! curl -fsSL "$DOWNLOAD_URL" -o "$tmp/snapshot.tar.gz"; then
+    echo "Error: failed to download $DOWNLOAD_URL" >&2
+    exit 1
+  fi
+  mkdir -p "$tmp/extract"
+  if ! tar -xzf "$tmp/snapshot.tar.gz" -C "$tmp/extract" --strip-components=1; then
+    echo "Error: failed to extract the downloaded archive" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$INSTALL_ROOT")"
+  rm -rf "$INSTALL_ROOT"
+  mv "$tmp/extract" "$INSTALL_ROOT"
+  trap - EXIT
+  rm -rf "$tmp"
+  echo "Installed snapshot to $INSTALL_ROOT"
+  exec bash "$INSTALL_ROOT/install.sh" "$@"
+fi
+
 # shellcheck source=scripts/lib/register.sh
 . "$SCRIPT_DIR/scripts/lib/register.sh"
 # shellcheck source=scripts/lib/update-verify.sh

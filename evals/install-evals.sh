@@ -121,6 +121,63 @@ HOME="$HOME_DIR" SHUNT_ALLOW_UNTRUSTED_REMOTE=true PATH="$WORKDIR/bin:$PATH" \
 check "install-sync-main" "$V2_SHA" "$(git -C "$CLONE" rev-parse HEAD)" \
   "install.sh fast-forwards the clone to origin/main"
 
+# Curl install/update: a fake curl serves a snapshot tarball so install.sh
+# piped over the web (no repo alongside) and shunt-update --yes for a
+# curl-installed copy (no .git) can be exercised without network.
+SNAPSHOT_TARBALL="$WORKDIR/snapshot.tar.gz"
+tar -C "$PLUGIN_DIR" --exclude='.git' --exclude='.fixtures' -czf "$SNAPSHOT_TARBALL" .
+export FAKE_SNAPSHOT="$SNAPSHOT_TARBALL"
+cat > "$WORKDIR/bin/curl" <<'EOF'
+#!/bin/bash
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -f "$FAKE_SNAPSHOT" ] || { echo "fake curl: FAKE_SNAPSHOT missing" >&2; exit 1; }
+if [ -n "$out" ]; then
+  cat "$FAKE_SNAPSHOT" > "$out"
+else
+  cat "$FAKE_SNAPSHOT"
+fi
+EOF
+chmod +x "$WORKDIR/bin/curl"
+
+BOOT_HOME="$WORKDIR/boot-home"
+mkdir -p "$BOOT_HOME/.gemini" "$BOOT_HOME/.cursor" "$WORKDIR/neutral"
+set +e
+(cd "$WORKDIR/neutral" && cat "$PLUGIN_DIR/install.sh" | \
+  HOME="$BOOT_HOME" PATH="$WORKDIR/bin:$PATH" \
+  SHUNT_INSTALL_DIR="$WORKDIR/installed" bash) > "$WORKDIR/bootstrap.log" 2>&1
+boot_rc=$?
+set -e
+check "curl-bootstrap-exit" "0" "$boot_rc" "curl bootstrap completes"
+check "curl-bootstrap-snapshot" "yes" \
+  "$([ -f "$WORKDIR/installed/install.sh" ] && echo yes || echo no)" "snapshot downloaded and extracted"
+check "curl-bootstrap-config" "yes" \
+  "$([ -f "$BOOT_HOME/.config/shunt-local/config.json" ] && echo yes || echo no)" "config created from the downloaded snapshot"
+check "curl-bootstrap-hooks" "yes" \
+  "$(jq -e '."shunt-local"' "$BOOT_HOME/.gemini/config/hooks.json" >/dev/null 2>&1 && echo yes || echo no)" "Antigravity hooks registered from the snapshot"
+
+# shunt-update --yes re-downloads the snapshot for a curl-installed copy.
+V2_SNAPSHOT="$WORKDIR/snapshot-v2.tar.gz"
+mkdir -p "$WORKDIR/v2tree"
+cp -r "$PLUGIN_DIR"/. "$WORKDIR/v2tree"/
+rm -rf "$WORKDIR/v2tree/.git"
+printf 'v2\n' > "$WORKDIR/v2tree/.install-sync-marker"
+tar -C "$WORKDIR/v2tree" -czf "$V2_SNAPSHOT" .
+export FAKE_SNAPSHOT="$V2_SNAPSHOT"
+set +e
+HOME="$BOOT_HOME" PATH="$WORKDIR/bin:$PATH" \
+  "$BOOT_HOME/.local/bin/shunt-update" --yes > "$WORKDIR/curl-update.log" 2>&1
+upd_rc=$?
+set -e
+check "curl-update-exit" "0" "$upd_rc" "shunt-update --yes completes for a curl install"
+check "curl-update-marker" "yes" \
+  "$([ -f "$WORKDIR/installed/.install-sync-marker" ] && echo yes || echo no)" "update pulled the latest snapshot"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

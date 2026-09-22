@@ -44,6 +44,33 @@ shunt_sync_install_source() {
   fi
 }
 
+# Download and extract the latest snapshot of the repository into dest. Used by
+# the curl bootstrap (install.sh piped from the web) and by shunt-update for
+# copies installed without a .git directory. Override the source with
+# SHUNT_DOWNLOAD_URL (default: the project's GitHub main tarball).
+shunt_download_snapshot() {
+  local dest="$1" ref="${2:-main}"
+  local url="${SHUNT_DOWNLOAD_URL:-https://codeload.github.com/devmercenario/shunt-local/tar.gz/refs/heads/${ref}}"
+  local tmp archive
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar >/dev/null 2>&1 || return 1
+  tmp="$(mktemp -d)" || return 1
+  archive="$tmp/snapshot.tar.gz"
+  if ! curl -fsSL "$url" -o "$archive"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  mkdir -p "$tmp/extract"
+  if ! tar -xzf "$archive" -C "$tmp/extract" --strip-components=1; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  mkdir -p "$(dirname "$dest")"
+  rm -rf "$dest"
+  mv "$tmp/extract" "$dest"
+  rm -rf "$tmp"
+}
+
 # Link the CLI binaries into ~/.local/bin (symlink, falling back to a copy).
 shunt_link_binaries() {
   local repo="$1"
