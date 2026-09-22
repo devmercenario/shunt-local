@@ -171,6 +171,7 @@ run_external_suite "$SCRIPT_DIR/rtk-interop-evals.sh" "RTK interop suite (indepe
 run_external_suite "$SCRIPT_DIR/doctor-evals.sh" "Doctor suite (installation diagnostics)"
 run_external_suite "$SCRIPT_DIR/stats-evals.sh" "Stats suite (audit-log summary)"
 run_external_suite "$SCRIPT_DIR/cli-evals.sh" "CLI suite (on/off/hook/status)"
+run_external_suite "$SCRIPT_DIR/lib-evals.sh" "Library suite (module split contract)"
 run_external_suite "$SCRIPT_DIR/contract-evals.sh" "Contract suite (per-harness decision schema)"
 run_external_suite "$SCRIPT_DIR/packaging-evals.sh" "Packaging suite (marketplace & package manifests)"
 run_external_suite "$SCRIPT_DIR/version-evals.sh" "Version suite (manifest version discipline)"

@@ -8,7 +8,14 @@ the controls.
 
 | Module | Responsibility |
 | :--- | :--- |
-| `scripts/lib/local-llm.sh` | Config load, endpoint validation, HTTP to the local LLM, secret redaction, audit log, sandbox selection, command allowlist/tokenizer, hook decision emitter, sensitive-name/list helpers |
+| `scripts/lib/local-llm.sh` | Loader: sources the modules below and runs `shunt_load_config` |
+| `scripts/lib/common.sh` | Library dir, temp files, path helpers, sensitive names, secret redaction |
+| `scripts/lib/config.sh` | Config load, endpoint validation, enable/disable |
+| `scripts/lib/validate.sh` | Command allowlist/denylist + shell-free execution |
+| `scripts/lib/sandbox.sh` | bwrap/firejail/docker execution |
+| `scripts/lib/audit.sh` | Audit log |
+| `scripts/lib/http.sh` | Local LLM request/response handling |
+| `scripts/lib/hooks.sh` | PreToolUse decision emitter |
 | `scripts/lib/paths.py` | Write-safety policy (shared by the CLI and the guard); loads `sensitive-names.txt` |
 | `scripts/lib/redact.py` | Secret redaction (byte-exact) |
 | `scripts/lib/register.sh` | Install/update/uninstall registration (bins, skills, hooks, trust) |
@@ -95,9 +102,9 @@ repo content --untrusted--> local LLM --untrusted output--> cloud agent
   impact (a few probes per task).
 - **`SHUNT_API_KEY_CMD` uses `eval`**: intentional (keyring command) and purely
   operator-controlled; treated with the same trust as `SHUNT_ALLOW_UNSAFE`.
-- **Guard config loader is duplicated** with `local-llm.sh` in Python, because
-  the guard must be cross-platform and not depend on bash.
+- **Guard config loader is duplicated** with `config.sh` in Python, because the
+  guard must be cross-platform and not depend on bash.
 - **OpenCode sensitive-name list is mirrored** in TypeScript; a packaging eval
   fails if it drifts from `sensitive-names.txt`.
-- **`local-llm.sh` is a large shared module**; if it grows further, split into
-  `config.sh`, `http.sh`, `sandbox.sh`, `validate.sh`, `audit.sh`.
+- **`task-exec` is a ~600-line monolith** (plan → context → apply → verify →
+  rollback); it could be split into phases if it grows further.
