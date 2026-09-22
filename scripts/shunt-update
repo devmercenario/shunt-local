@@ -18,6 +18,26 @@ BIN_DIR="${HOME}/.local/bin"
 GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
 HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
 TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
+INSTALL_ROOT_FILE="${HOME}/.config/shunt-local/install_root"
+
+# Accept only the well-known public code hosts for a pull. Compared by exact
+# hostname, so https://github.com.evil.example/... is correctly rejected.
+shunt_remote_is_trusted() {
+  local url="$1" host=""
+  if [[ "$url" =~ ^[^@/]+@([^:/]+): ]]; then
+    host="${BASH_REMATCH[1]}"
+  elif [[ "$url" =~ ^[a-zA-Z][a-zA-Z0-9+.-]*:// ]]; then
+    host="${url#*://}"
+    host="${host%%/*}"
+    host="${host##*@}"
+    host="${host%%:*}"
+  fi
+  host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+  case "$host" in
+    github.com|gitlab.com|bitbucket.org) return 0 ;;
+  esac
+  return 1
+}
 
 DO_PULL=true
 DO_APPLY=false
@@ -60,16 +80,13 @@ if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
   if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if git -C "$REPO_DIR" remote | grep -q 'origin'; then
       remote_url=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null || echo "")
-      case "$remote_url" in
-        *github.com*|*gitlab.com*|*bitbucket.org*) ;;
-        *)
-          if [ "${SHUNT_ALLOW_UNTRUSTED_REMOTE:-}" != "true" ]; then
-            echo "🔒 Refusing to pull from untrusted remote: ${remote_url:-<none>}" >&2
-            echo "   Set SHUNT_ALLOW_UNTRUSTED_REMOTE=true to allow this remote." >&2
-            DO_PULL=false
-          fi
-          ;;
-      esac
+      if ! shunt_remote_is_trusted "$remote_url"; then
+        if [ "${SHUNT_ALLOW_UNTRUSTED_REMOTE:-}" != "true" ]; then
+          echo "🔒 Refusing to pull from untrusted remote: ${remote_url:-<none>}" >&2
+          echo "   Set SHUNT_ALLOW_UNTRUSTED_REMOTE=true to allow this remote." >&2
+          DO_PULL=false
+        fi
+      fi
     fi
   fi
 fi
@@ -119,14 +136,24 @@ for skill in "$REPO_DIR"/skills/*; do
   fi
 done
 
-# 4. Ensure repository is trusted in Antigravity ~/.gemini/trustedFolders.json
+# 4. Register the repository as trusted in Antigravity only when it is safely
+#    owned (never trust a directory writable by group/other).
 if [ -d "${HOME}/.gemini" ] && command -v jq >/dev/null 2>&1; then
-  if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
-    echo "{}" > "$TRUSTED_FOLDERS_FILE"
+  repo_owner=$(stat -c '%u' "$REPO_DIR" 2>/dev/null || stat -f '%u' "$REPO_DIR" 2>/dev/null || echo "")
+  if [ -n "$repo_owner" ] && [ "$repo_owner" != "$(id -u)" ]; then
+    echo "⚠️  Not registering $REPO_DIR as trusted: it is owned by uid $repo_owner (not you)." >&2
+  elif [ -n "$(find "$REPO_DIR" -maxdepth 0 \( -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
+    echo "⚠️  Not registering $REPO_DIR as trusted: it is writable by group/other." >&2
+  else
+    if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
+      echo "{}" > "$TRUSTED_FOLDERS_FILE"
+    fi
+    tmp_tf=$(umask 077 && mktemp) || exit 1
+    jq --arg dir "$REPO_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
+    printf '%s' "$REPO_DIR" > "$INSTALL_ROOT_FILE"
+    chmod 600 "$INSTALL_ROOT_FILE" 2>/dev/null || true
+    echo "Ensured $REPO_DIR is trusted in $TRUSTED_FOLDERS_FILE"
   fi
-  tmp_tf=$(umask 077 && mktemp) || exit 1
-  jq --arg dir "$REPO_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
-  echo "Ensured $REPO_DIR is trusted in $TRUSTED_FOLDERS_FILE"
 fi
 
 # 5. Register/update PreToolUse lifecycle hooks in ~/.gemini/config/hooks.json

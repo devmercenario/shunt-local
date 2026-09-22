@@ -241,7 +241,7 @@ To remove `shunt-local` and restore your previous configuration at any time:
 4. **User Global Config** (`~/.config/shunt-local/config.json`)
 5. **Built-in Defaults**
 
-> 🔒 **Security defaults**: remote endpoints (HTTP *and* HTTPS) are blocked unless `SHUNT_ALLOW_REMOTE=true`; `--test-cmd`/`--rollback-cmd` reject shell metacharacters and dangerous patterns unless `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`; all file writes are confined to the working directory unless `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true`. See [`SECURITY.md`](./SECURITY.md) for the full list of opt-in escape hatches.
+> 🔒 **Security defaults**: remote endpoints (HTTP *and* HTTPS) are blocked unless `SHUNT_ALLOW_REMOTE=true`, and only `http`/`https` are accepted; `--test-cmd`/`--rollback-cmd` run **without a shell** and are restricted to a strict token allowlist unless `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`; all file writes are confined to the working directory unless `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true`, and home dotfiles plus VCS/CI/credential/build files (`.git/`, `.github/`, `.env`, `package.json`, …) are refused unless `SHUNT_ALLOW_SENSITIVE_WRITES=true`; the API key is passed via a `0600` `--config` file, never on the command line. See [`SECURITY.md`](./SECURITY.md) for the full list of opt-in escape hatches.
 
 ### Configuration File (`~/.config/shunt-local/config.json`)
 

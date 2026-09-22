@@ -10,11 +10,12 @@ CONFIG_DIR="${HOME}/.config/shunt-local"
 GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
 HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
 TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
+INSTALL_ROOT_FILE="${CONFIG_DIR}/install_root"
 
 echo "Installing shunt-local..."
 
 # 1. Preflight dependencies check
-for cmd in jq curl; do
+for cmd in jq curl python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Error: missing required dependency: $cmd" >&2
     echo "Please install $cmd using your package manager." >&2
@@ -55,14 +56,27 @@ for skill in "$SCRIPT_DIR"/skills/*; do
   fi
 done
 
-# 5. Ensure repository is trusted in Antigravity ~/.gemini/trustedFolders.json
+# 5. Register repository as trusted in Antigravity ~/.gemini/trustedFolders.json.
+#    A trusted directory is executed by the agent on every tool call, so never
+#    trust one that is owned by somebody else or is writable by group/other
+#    (a third party could then drop a backdoored hook into it).
 if [ -d "${HOME}/.gemini" ] && command -v jq >/dev/null 2>&1; then
-  if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
-    echo "{}" > "$TRUSTED_FOLDERS_FILE"
+  repo_owner=$(stat -c '%u' "$SCRIPT_DIR" 2>/dev/null || stat -f '%u' "$SCRIPT_DIR" 2>/dev/null || echo "")
+  if [ -n "$repo_owner" ] && [ "$repo_owner" != "$(id -u)" ]; then
+    echo "⚠️  Not registering $SCRIPT_DIR as trusted: it is owned by uid $repo_owner (not you)." >&2
+  elif [ -n "$(find "$SCRIPT_DIR" -maxdepth 0 \( -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
+    echo "⚠️  Not registering $SCRIPT_DIR as trusted: it is writable by group/other." >&2
+    echo "   Fix with: chmod go-w \"$SCRIPT_DIR\"" >&2
+  else
+    if [ ! -f "$TRUSTED_FOLDERS_FILE" ]; then
+      echo "{}" > "$TRUSTED_FOLDERS_FILE"
+    fi
+    tmp_tf=$(umask 077 && mktemp) || exit 1
+    jq --arg dir "$SCRIPT_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
+    printf '%s' "$SCRIPT_DIR" > "$INSTALL_ROOT_FILE"
+    chmod 600 "$INSTALL_ROOT_FILE" 2>/dev/null || true
+    echo "Ensured $SCRIPT_DIR is trusted in $TRUSTED_FOLDERS_FILE"
   fi
-  tmp_tf=$(umask 077 && mktemp) || exit 1
-  jq --arg dir "$SCRIPT_DIR" '. + {($dir): "TRUST_FOLDER"}' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
-  echo "Ensured $SCRIPT_DIR is trusted in $TRUSTED_FOLDERS_FILE"
 fi
 
 # 6. Register with Antigravity CLI (agy) if present

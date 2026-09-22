@@ -91,8 +91,18 @@ function loadConfig(): {
 
 function isLocalEndpoint(endpoint: string): boolean {
   try {
-    const host = new URL(endpoint).hostname;
-    return ['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'].includes(host);
+    const u = new URL(endpoint);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return ['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isSupportedEndpoint(endpoint: string): boolean {
+  try {
+    const protocol = new URL(endpoint).protocol;
+    return protocol === 'http:' || protocol === 'https:';
   } catch {
     return false;
   }
@@ -102,10 +112,18 @@ async function isServerOnline(endpoint: string): Promise<boolean> {
   if (process.env.SHUNT_MOCK_ONLINE === '1') return true;
   if (process.env.SHUNT_MOCK_ONLINE === '0') return false;
 
-  // Fail closed on non-local endpoints unless explicitly allowed. This prevents a
-  // config-poisoned endpoint from becoming a beacon on every intercepted read/bash.
-  if (!isLocalEndpoint(endpoint) && process.env.SHUNT_ALLOW_REMOTE !== 'true') {
+  // Fail closed on unsupported schemes and non-local endpoints unless explicitly
+  // allowed. This prevents a config-poisoned endpoint from becoming a beacon on
+  // every intercepted read/bash.
+  if (!isSupportedEndpoint(endpoint)) {
     return false;
+  }
+  const isLocal = isLocalEndpoint(endpoint);
+  if (!isLocal && process.env.SHUNT_ALLOW_REMOTE !== 'true') {
+    return false;
+  }
+  if (!isLocal && !endpoint.toLowerCase().startsWith('https://')) {
+    return false; // Remote endpoints must use TLS.
   }
 
   try {

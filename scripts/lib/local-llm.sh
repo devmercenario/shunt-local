@@ -76,6 +76,19 @@ shunt_validate_endpoint() {
   rest=$(echo "$endpoint" | sed -E 's|^[a-zA-Z][a-zA-Z0-9+.-]*://||')
   host=$(echo "$rest" | sed -E 's|[:/].*||')
   [ -n "$scheme" ] || scheme="http"
+  scheme=$(printf '%s' "$scheme" | tr '[:upper:]' '[:lower:]')
+
+  # Only HTTP(S) are valid transports for an OpenAI-compatible endpoint. Without
+  # this, schemes like file://, gopher:// or ftp:// could slip past the remote
+  # checks below and make curl send source code to an unexpected destination.
+  case "$scheme" in
+    http|https) ;;
+    *)
+      echo "🔒 BLOCKED: unsupported endpoint scheme '${scheme}://'." >&2
+      echo "   Only http:// (localhost) and https:// (remote, opt-in) are allowed." >&2
+      return 1
+      ;;
+  esac
 
   # Localhost endpoints are always safe.
   case "$host" in
@@ -160,6 +173,22 @@ shunt_tmpfile() {
   printf -v "$1" '%s' "$f"
 }
 
+# Write the Authorization header to a 0600 temp file and expose its path. Using
+# curl --config keeps the API key out of the process argument list (visible to
+# other local users via ps / /proc/<pid>/cmdline).
+shunt_auth_config_file() {
+  [ -z "${SHUNT_API_KEY:-}" ] && return 1
+  local f
+  shunt_tmpfile f || return 1
+  local key="${SHUNT_API_KEY//$'\n'/}"
+  key="${key//$'\r'/}"
+  key="${key//\\/\\\\}"
+  key="${key//\"/\\\"}"
+  printf 'header = "Authorization: Bearer %s"\n' "$key" > "$f"
+  printf -v "$1" '%s' "$f"
+  return 0
+}
+
 shunt_preflight() {
   local missing=""
   command -v jq >/dev/null 2>&1 || missing="$missing jq"
@@ -190,15 +219,20 @@ shunt_is_online() {
   fi
 
   # Only send the API key to localhost endpoints; never to remote hosts.
-  local auth_header=()
+  local auth_args=()
   if [ -n "${SHUNT_API_KEY:-}" ]; then
     local health_host
     health_host=$(echo "$SHUNT_ENDPOINT" | sed -E 's|^[a-zA-Z][a-zA-Z0-9+.-]*://||' | sed -E 's|[:/].*||')
     case "$health_host" in
-      127.0.0.1|localhost|'[::1]'|::1|0.0.0.0) auth_header=(-H "Authorization: Bearer $SHUNT_API_KEY") ;;
+      127.0.0.1|localhost|'[::1]'|::1|0.0.0.0)
+        local health_auth_cfg
+        if shunt_auth_config_file health_auth_cfg; then
+          auth_args=(--config "$health_auth_cfg")
+        fi
+        ;;
     esac
   fi
-  curl -s -S --connect-timeout 0.1 -m 0.3 "${auth_header[@]}" "$health_url" >/dev/null 2>&1
+  curl -s -S --connect-timeout 0.1 -m 0.3 "${auth_args[@]}" "$health_url" >/dev/null 2>&1
 }
 
 shunt_report_error() {
@@ -228,16 +262,19 @@ shunt_invoke_payload() {
   # Security: validate endpoint before sending any data
   shunt_validate_endpoint "$SHUNT_ENDPOINT" || return 1
 
-  local auth_header=()
-  if [ -n "$SHUNT_API_KEY" ]; then
-    auth_header=(-H "Authorization: Bearer $SHUNT_API_KEY")
+  local auth_args=()
+  if [ -n "${SHUNT_API_KEY:-}" ]; then
+    local auth_cfg
+    if shunt_auth_config_file auth_cfg; then
+      auth_args=(--config "$auth_cfg")
+    fi
   fi
 
   curl -s -S \
     --max-time "$SHUNT_TIMEOUT_SECONDS" \
     -X POST "$SHUNT_ENDPOINT" \
     -H "Content-Type: application/json" \
-    "${auth_header[@]}" \
+    "${auth_args[@]}" \
     --data-binary @"$payload_file" \
     > "$response_file" 2>"$stderr_file"
   local rc=$?

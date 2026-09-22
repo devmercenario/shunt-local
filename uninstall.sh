@@ -6,7 +6,10 @@ set -euo pipefail
 SKILLS_DIR="${HOME}/.agents/skills"
 GEMINI_CONFIG_DIR="${HOME}/.gemini/config"
 HOOKS_FILE="${GEMINI_CONFIG_DIR}/hooks.json"
+TRUSTED_FOLDERS_FILE="${HOME}/.gemini/trustedFolders.json"
 CONFIG_DIR="${HOME}/.config/shunt-local"
+INSTALL_ROOT_FILE="${CONFIG_DIR}/install_root"
+CURSOR_HOOKS_FILE="${HOME}/.cursor/hooks.json"
 
 BIN_DIR="${HOME}/.local/bin"
 
@@ -63,7 +66,26 @@ if [ -f "$OPENCODE_PLUGIN" ]; then
   echo "Removed OpenCode plugin from $OPENCODE_PLUGIN"
 fi
 
-# 7. Purge configuration (removes API keys and all user config)
+# 8. Remove the trusted-folder entry recorded at install time (a trusted folder
+#    executes code on every agent tool call, so it must not outlive the plugin).
+if [ -f "$INSTALL_ROOT_FILE" ] && [ -f "$TRUSTED_FOLDERS_FILE" ] && command -v jq >/dev/null 2>&1; then
+  recorded_root=$(cat "$INSTALL_ROOT_FILE" 2>/dev/null || true)
+  if [ -n "$recorded_root" ]; then
+    tmp_tf=$(umask 077 && mktemp) || exit 1
+    jq --arg dir "$recorded_root" 'del(.[$dir])' "$TRUSTED_FOLDERS_FILE" > "$tmp_tf" && mv "$tmp_tf" "$TRUSTED_FOLDERS_FILE"
+    echo "Removed trust entry for $recorded_root from $TRUSTED_FOLDERS_FILE"
+  fi
+fi
+
+# 9. Remove Cursor native hooks registered by the installer
+if [ -f "$CURSOR_HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
+  tmp_cur=$(umask 077 && mktemp) || exit 1
+  jq '.hooks.preToolUse = ((.hooks.preToolUse // []) | map(select((.command // "") | test("check-file-size|check-bash-read") | not)))' \
+    "$CURSOR_HOOKS_FILE" > "$tmp_cur" && mv "$tmp_cur" "$CURSOR_HOOKS_FILE"
+  echo "Removed shunt-local hooks from $CURSOR_HOOKS_FILE"
+fi
+
+# 10. Purge configuration (removes API keys and all user config)
 if [ "$PURGE" = "true" ]; then
   if [ -d "$CONFIG_DIR" ]; then
     rm -rf "$CONFIG_DIR"
