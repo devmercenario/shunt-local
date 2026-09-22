@@ -69,8 +69,8 @@ while [[ $# -gt 0 ]]; do
     --files|--target-files)
       IFS=',' read -ra ADDR <<< "$2"
       for f in ${ADDR[@]+"${ADDR[@]}"}; do
-        # Trim leading/trailing whitespace
-        f=$(echo "$f" | xargs)
+        # Trim leading/trailing whitespace (sed: preserves backslashes)
+        f=$(shunt_trim "$f")
         [ -n "$f" ] && target_files+=("$f")
       done
       shift 2
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
     --read-files|--reference)
       IFS=',' read -ra ADDR <<< "$2"
       for f in ${ADDR[@]+"${ADDR[@]}"}; do
-        f=$(echo "$f" | xargs)
+        f=$(shunt_trim "$f")
         [ -n "$f" ] && read_files+=("$f")
       done
       shift 2

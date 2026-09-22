@@ -29,7 +29,7 @@ check() {
 echo "Portability Evals"
 echo "────────────────────────────────────────────────────────────────"
 
-mkdir -p "$WORKDIR/home"
+mkdir -p "$WORKDIR/home" "$WORKDIR/bin"
 seq 1 400 > "$WORKDIR/large.txt"
 
 guard() { printf '%s' "$1" | HOME="$WORKDIR/home" __SHUNT_TEST_MOCK_ONLINE=1 "$PY" "$GUARD" "${@:2}" 2>/dev/null; }
@@ -53,6 +53,30 @@ check "crlf-content" "deny" "$(printf '%s' "$g" | jq -r '.permission // empty')"
 check "wrapper-python-fallback" "yes" \
   "$(grep -q 'command -v python3 || command -v python' "$PLUGIN_DIR/hooks/check-file-size" && echo yes || echo no)" \
   "bash wrapper resolves python3 or python"
+
+# ---- Regression tests for platform bugs found in CI ----
+LIB="$PLUGIN_DIR/scripts/lib/local-llm.sh"
+
+# 1. Allowlist must accept backslashes (Windows paths) but still block curl by
+#    basename across separators.
+rb=$(HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; shunt_validate_exec_command 'python3 -B C:\\Users\\x\\t.py' t >/dev/null 2>&1 && echo allow || echo block")
+check "win-path-token" "allow" "$rb" "backslash path token is allowed"
+rc2=$(HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; shunt_validate_exec_command 'C:\\tools\\curl http://evil' t >/dev/null 2>&1 && echo allow || echo block")
+check "win-path-denylist" "block" "$rc2" "curl denylist matches across backslash paths"
+
+# 2. cygpath may emit CRLF; conversion helpers must strip CR.
+cat > "$WORKDIR/bin/cygpath" <<'MOCK'
+#!/bin/bash
+printf 'C:\\mock\\x\r\n'
+MOCK
+chmod +x "$WORKDIR/bin/cygpath"
+cr=$(PATH="$WORKDIR/bin:$PATH" HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; shunt_to_native /x | tr -d '\n'")
+case "$cr" in *$'\r'*) cr_present=yes ;; *) cr_present=no ;; esac
+check "cygpath-strips-cr" "no" "$cr_present" "shunt_to_native strips CR from cygpath output"
+
+# 3. Trimming --files entries must not interpret backslashes (xargs did).
+trimmed=$(HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; shunt_trim '  C:\\a\\b  '")
+check "trim-preserves-backslash" 'C:\a\b' "$trimmed" "shunt_trim preserves backslashes"
 
 # PowerShell installer exists.
 check "install-ps1" "yes" "$([ -f "$PLUGIN_DIR/install.ps1" ] && echo yes || echo no)" "install.ps1 is present"

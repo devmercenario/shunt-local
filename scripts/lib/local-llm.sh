@@ -259,6 +259,12 @@ shunt_preflight() {
   return 0
 }
 
+# Trim surrounding whitespace without interpreting backslashes (unlike xargs,
+# which strips them and corrupts Windows paths).
+shunt_trim() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
 # Resolve a path to its physical location (portable; python3 is a dependency).
 # On Windows/MSYS the path is translated with cygpath so Python and bash agree.
 shunt_to_native() {
