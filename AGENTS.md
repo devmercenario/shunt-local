@@ -70,7 +70,10 @@ scripts under `hooks/` are thin wrappers kept for compatibility.
 
 ## Contributing
 
-- Run the full suite before committing: `bash evals/run.sh` (328 checks; a few
-  are environment-dependent — rtk and installed harnesses).
+- **`main` accepts PRs only.** Direct pushes to `main` are blocked by a
+  repository ruleset; open a pull request and it must pass the full CI matrix
+  (evals on Linux/macOS/Windows, ShellCheck, secret scan) before merging.
+- Run the full suite before committing: `bash evals/run.sh` (a few checks are
+  environment-dependent — rtk and installed harnesses).
 - Keep every new control covered by an eval (`evals/*-evals.sh`).
 - Never weaken a default to make a test pass; add an opt-in env var instead.
