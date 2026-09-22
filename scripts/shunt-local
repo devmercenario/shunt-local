@@ -11,6 +11,7 @@ while [ -h "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 . "$SCRIPT_DIR/lib/local-llm.sh"
+. "$SCRIPT_DIR/lib/doctor.sh"
 
 CONFIG_DIR="${HOME}/.config/shunt-local"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
@@ -177,6 +178,7 @@ Control Commands:
   on | enable                  Enable master switch (intercept large reads & enable workers)
   off | disable                Disable master switch (bypass all hooks immediately)
   status                       Show current master switch, subhook, and backend status
+  doctor [--json]              Diagnose the installation (deps, config, sandbox, hooks)
   hook <name> <on|off>         Enable or disable a specific subhook (view_file, run_command)
 
 Execution Commands:
@@ -206,6 +208,9 @@ case "$SUBCOMMAND" in
     ;;
   status)
     cmd_status
+    ;;
+  doctor)
+    shunt_doctor "$@"
     ;;
   hook)
     cmd_hook "$@"

@@ -1,0 +1,25 @@
+{
+  "name": "opencode-shunt-local",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that intercepts large reads and redirects them to shunt-local's local LLM delegation.",
+  "type": "module",
+  "main": "shunt-local.ts",
+  "exports": {
+    ".": "./shunt-local.ts"
+  },
+  "files": [
+    "shunt-local.ts"
+  ],
+  "license": "Apache-2.0",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "llm",
+    "local-llm",
+    "shunt-local"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devmercenario/shunt-local.git"
+  }
+}
