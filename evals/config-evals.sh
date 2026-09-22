@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0

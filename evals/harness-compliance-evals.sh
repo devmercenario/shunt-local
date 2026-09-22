@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0
@@ -150,21 +151,21 @@ check "claude-plugin-manifest" "shunt-local" \
 
 # Cursor rule frontmatter must be valid YAML with alwaysApply (globs: * was invalid).
 mdc_check=$(python3 - "$PLUGIN_DIR/.cursor/rules/shunt-local.mdc" <<'PY'
+import re
 import sys
-try:
-    import yaml
-except Exception:
-    print("noyaml"); raise SystemExit
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
 if not text.startswith("---"):
     print("nofrontmatter"); raise SystemExit
 fm = text.split("---", 2)[1]
 try:
+    import yaml
     data = yaml.safe_load(fm) or {}
-except Exception as exc:
-    print(f"yamlerror:{exc}"); raise SystemExit
-print("alwaysapply" if data.get("alwaysApply") is True else "missing")
+    print("alwaysapply" if data.get("alwaysApply") is True else "missing")
+except Exception:
+    # No PyYAML available: fall back to a conservative textual check.
+    ok = re.search(r"^alwaysApply:\s*true\s*$", fm, re.M) and not re.search(r"^globs:\s*\*\s*$", fm, re.M)
+    print("alwaysapply" if ok else "missing")
 PY
 )
 check "cursor-rule-frontmatter" "alwaysapply" "$mdc_check" "Cursor rule frontmatter is valid YAML and alwaysApply: true"

@@ -214,7 +214,7 @@ SHUNT_PID="$$"
 
 shunt_cleanup() {
   if [ "$$" -eq "$SHUNT_PID" ]; then
-    rm -f "${SHUNT_TMPFILES[@]}" 2>/dev/null || true
+    rm -f ${SHUNT_TMPFILES[@]+"${SHUNT_TMPFILES[@]}"} 2>/dev/null || true
   fi
 }
 trap shunt_cleanup EXIT INT TERM
@@ -260,8 +260,30 @@ shunt_preflight() {
 }
 
 # Resolve a path to its physical location (portable; python3 is a dependency).
+# On Windows/MSYS the path is translated with cygpath so Python and bash agree.
+shunt_to_native() {
+  local p="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w -- "$p" 2>/dev/null || printf '%s' "$p"
+  else
+    printf '%s' "$p"
+  fi
+}
+
+shunt_to_posix() {
+  local p="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u -- "$p" 2>/dev/null || printf '%s' "$p"
+  else
+    printf '%s' "$p"
+  fi
+}
+
 shunt_realpath() {
-  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || printf '%s' "$1"
+  local p
+  p=$(shunt_to_native "$1")
+  p=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null || printf '%s' "$p")
+  shunt_to_posix "$p"
 }
 
 # Reads are confined to the working directory unless explicitly opted out.
@@ -355,7 +377,7 @@ shunt_is_online() {
         ;;
     esac
   fi
-  curl -s -S --connect-timeout 0.1 -m 0.3 "${auth_args[@]}" "$health_url" >/dev/null 2>&1
+  curl -s -S --connect-timeout 0.1 -m 0.3 ${auth_args[@]+"${auth_args[@]}"} "$health_url" >/dev/null 2>&1
 }
 
 shunt_report_error() {
@@ -397,7 +419,7 @@ shunt_invoke_payload() {
     --max-time "$SHUNT_TIMEOUT_SECONDS" \
     -X POST "$SHUNT_ENDPOINT" \
     -H "Content-Type: application/json" \
-    "${auth_args[@]}" \
+    ${auth_args[@]+"${auth_args[@]}"} \
     --data-binary @"$payload_file" \
     > "$response_file" 2>"$stderr_file"
   local rc=$?
@@ -576,7 +598,7 @@ shunt_validate_exec_command() {
   # "run this string as code" are blocked, per interpreter.
   local inline_eval=0
   local -a rest=("${argv[@]:1}")
-  for tok in "${rest[@]}"; do
+  for tok in ${rest[@]+"${rest[@]}"}; do
     case "$prog" in
       python|python2|python3|python3.*)
         case "$tok" in -c|--command) inline_eval=1 ;; esac ;;
@@ -714,5 +736,5 @@ shunt_run_command() {
     fi
     echo "⚠️  shunt-local: running without a sandbox; set SHUNT_SANDBOX_STRICT=true to refuse." >&2
   fi
-  "${SHUNT_SANDBOX_ARGV[@]}"
+  ${SHUNT_SANDBOX_ARGV[@]+"${SHUNT_SANDBOX_ARGV[@]}"}
 }

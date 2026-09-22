@@ -10,6 +10,7 @@ GUARD="$PLUGIN_DIR/hooks/shunt_guard.py"
 PY="${PYTHON:-$(command -v python3 || command -v python)}"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0

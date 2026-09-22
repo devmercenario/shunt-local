@@ -8,6 +8,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB="$PLUGIN_DIR/scripts/lib/local-llm.sh"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0
@@ -67,19 +68,20 @@ key=$( HOME="$WORKDIR/home" SHUNT_API_KEY_FILE="$WORKDIR/home/keyfile" \
 check "key-from-file" "sk-from-file" "$key" "SHUNT_API_KEY_FILE resolves the key"
 
 # --- read confinement ---
+printf 'outside\n' > "$WORKDIR/outside.txt"
 rc=0
 ( cd "$WORKDIR/work" && HOME="$WORKDIR/home" PATH="$WORKDIR/bin:$PATH" \
-    "$PLUGIN_DIR/scripts/bulk-read" --question q --paths /etc/hostname ) >/dev/null 2>&1 || rc=$?
+    "$PLUGIN_DIR/scripts/bulk-read" --question q --paths "$WORKDIR/outside.txt" ) >/dev/null 2>&1 || rc=$?
 check "bulk-read-refuse-outside" "1" "$rc" "bulk-read refuses a path outside the CWD"
 
 rc=0
 ( cd "$WORKDIR/work" && HOME="$WORKDIR/home" PATH="$WORKDIR/bin:$PATH" \
-    "$PLUGIN_DIR/scripts/code-write" --spec x --reference /etc/hostname --target "$WORKDIR/work/o.py" ) >/dev/null 2>&1 || rc=$?
+    "$PLUGIN_DIR/scripts/code-write" --spec x --reference "$WORKDIR/outside.txt" --target "$WORKDIR/work/o.py" ) >/dev/null 2>&1 || rc=$?
 check "code-write-refuse-outside" "1" "$rc" "code-write refuses a reference outside the CWD"
 
 rc=0
 ( cd "$WORKDIR/work" && HOME="$WORKDIR/home" PATH="$WORKDIR/bin:$PATH" SHUNT_ALLOW_READS_OUTSIDE_CWD=true \
-    "$PLUGIN_DIR/scripts/bulk-read" --question q --paths /etc/hostname ) >/dev/null 2>&1 || rc=$?
+    "$PLUGIN_DIR/scripts/bulk-read" --question q --paths "$WORKDIR/outside.txt" ) >/dev/null 2>&1 || rc=$?
 check "read-optin" "0" "$rc" "SHUNT_ALLOW_READS_OUTSIDE_CWD allows the read"
 
 # --- end-to-end: secret never reaches the endpoint ---

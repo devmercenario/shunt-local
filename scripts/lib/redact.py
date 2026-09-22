@@ -33,7 +33,9 @@ def redact_assign(match: "re.Match[str]") -> str:
 
 
 def main() -> int:
-    data = sys.stdin.read()
+    # Use binary streams so Windows does not translate \n to \r\n (which would
+    # corrupt payloads and break exact-content assertions).
+    data = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     counts: dict[str, int] = {}
     for name, pattern in PATTERNS:
         data, n = pattern.subn(lambda _m, name=name: f"[REDACTED:{name}]", data)
@@ -42,7 +44,7 @@ def main() -> int:
     data, n = ASSIGN.subn(redact_assign, data)
     if n:
         counts["secret-assignment"] = counts.get("secret-assignment", 0) + n
-    sys.stdout.write(data)
+    sys.stdout.buffer.write(data.encode("utf-8"))
     if counts:
         summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
         sys.stderr.write(f"{summary}\n")

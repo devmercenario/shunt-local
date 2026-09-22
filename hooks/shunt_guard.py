@@ -27,6 +27,13 @@ try:
 except Exception:  # pragma: no cover - guard still works without the module
     shunt_paths = None
 
+
+def native(path_str):
+    """Translate MSYS-style paths to Windows paths when running on Windows."""
+    if shunt_paths is not None and hasattr(shunt_paths, "to_native"):
+        return shunt_paths.to_native(path_str)
+    return path_str
+
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080/v1/chat/completions"
 DEFAULT_MIN_LINES = 350
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
@@ -315,7 +322,7 @@ def main():
                              "Set SHUNT_ALLOW_SENSITIVE_READS=true to allow.")
                         return 0
             content = payload.get("content")
-            lines = content.count("\n") if isinstance(content, str) else count_lines(br_paths[0])
+            lines = content.count("\n") if isinstance(content, str) else count_lines(native(br_paths[0]))
             if lines > cfg["min_lines"] and is_online(cfg):
                 emit(harness, "deny",
                      f"File is {lines} lines (threshold: {cfg['min_lines']}). Use the /bulk-reader "
@@ -330,9 +337,9 @@ def main():
                  f"shunt-local blocked reading protected file '{path}'. "
                  "Set SHUNT_ALLOW_SENSITIVE_READS=true to allow.")
             return 0
-        if not os.path.isfile(path):
+        if not os.path.isfile(native(path)):
             return allow()
-        lines = count_lines(path)
+        lines = count_lines(native(path))
         if lines <= cfg["min_lines"]:
             return allow()
         if not is_online(cfg):
@@ -373,9 +380,9 @@ def main():
     if not command or "|" in command or ">" in command:
         return allow()
     path = extract_read_command_path(command)
-    if not path or not os.path.isfile(path):
+    if not path or not os.path.isfile(native(path)):
         return allow()
-    lines = count_lines(path)
+    lines = count_lines(native(path))
     if lines <= cfg["min_lines"]:
         return allow()
     if not is_online(cfg):

@@ -6,6 +6,8 @@ harness adapter enforce exactly the same policy.
 """
 import os
 import re
+import shutil
+import subprocess
 
 # Files/directories whose modification enables code execution, credential theft
 # or CI/supply-chain persistence. Writable inside the CWD, but not by default.
@@ -23,8 +25,24 @@ SENSITIVE_NAMES = {
 }
 
 
+def to_native(path: str) -> str:
+    """Translate an MSYS/Cygwin-style path to a Windows path when needed.
+
+    On Windows, agents and the test harness may hand us POSIX paths such as
+    ``/tmp/x`` or ``/c/Users/...``; Python cannot open those directly.
+    """
+    if os.name == "nt" and path.startswith("/") and shutil.which("cygpath"):
+        try:
+            out = subprocess.run(["cygpath", "-w", "--", path],
+                                 capture_output=True, text=True)
+            return out.stdout.strip() or path
+        except Exception:
+            return path
+    return path
+
+
 def realpath(path: str) -> str:
-    return os.path.realpath(os.path.abspath(path))
+    return os.path.realpath(os.path.abspath(to_native(path)))
 
 
 def _parts(value: str):

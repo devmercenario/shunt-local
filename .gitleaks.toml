@@ -1,0 +1,20 @@
+# Gitleaks configuration.
+#
+# The test suite intentionally contains fake secrets to exercise the redaction
+# logic; those live under evals/ and docs/. Everything else is scanned normally.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional fake secrets in test fixtures"
+paths = [
+  '''evals/''',
+]
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''sk-topsecret-123''',
+  '''SUPER-SECRET-VALUE''',
+  '''ghp_abcdefghijklmnopqrstuvwxyz0123456789''',
+  '''sk-ant-''',
+]

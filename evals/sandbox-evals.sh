@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0
@@ -35,6 +36,13 @@ printf '%s\n' "\$*" >> "$WORKDIR/bwrap.args"
 exit 0
 MOCK
 chmod +x "$WORKDIR/bin/bwrap"
+
+# Mock docker so the image-requirement check is deterministic everywhere.
+cat > "$WORKDIR/bin/docker" <<MOCK
+#!/bin/bash
+exit 0
+MOCK
+chmod +x "$WORKDIR/bin/docker"
 
 source_lib() {
   # shellcheck disable=SC1091
@@ -66,7 +74,7 @@ args=$(cat "$WORKDIR/bwrap.args")
 check "bwrap-network-optin" "no" "$(printf '%s' "$args" | grep -q -- '--unshare-net' && echo yes || echo no)" "SHUNT_SANDBOX_NETWORK=true keeps network"
 
 # docker requires an image.
-val=$( ( cd "$WORKDIR/cwd" && HOME="$WORKDIR/home" SHUNT_SANDBOX=docker \
+val=$( ( cd "$WORKDIR/cwd" && HOME="$WORKDIR/home" PATH="$WORKDIR/bin:$PATH" SHUNT_SANDBOX=docker \
     bash -c ". '$PLUGIN_DIR/scripts/lib/local-llm.sh' >/dev/null 2>&1; shunt_run_command 'echo hi' argv" ) 2>&1 || true )
 check "docker-requires-image" "yes" "$(printf '%s' "$val" | grep -q 'SHUNT_SANDBOX_IMAGE is required' && echo yes || echo no)" "docker backend without image errors"
 

@@ -105,8 +105,9 @@ if [ -n "$target" ]; then
   # Refuse home dotfiles (mirrors task-exec) and sensitive project files
   # (VCS/CI/lockfiles/credential files) unless explicitly opted in.
   if [ -n "${HOME:-}" ]; then
+    real_home=$(cd "$HOME" 2>/dev/null && pwd -P || printf '%s' "$HOME")
     case "$real_target" in
-      "$HOME"/.*)
+      "$real_home"/.*)
         echo "Error: refusing to write to a home dotfile: $real_target" >&2
         exit 1
         ;;

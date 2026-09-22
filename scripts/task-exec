@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
     --instruction) instruction="$2"; shift 2 ;;
     --files|--target-files)
       IFS=',' read -ra ADDR <<< "$2"
-      for f in "${ADDR[@]}"; do
+      for f in ${ADDR[@]+"${ADDR[@]}"}; do
         # Trim leading/trailing whitespace
         f=$(echo "$f" | xargs)
         [ -n "$f" ] && target_files+=("$f")
@@ -77,7 +77,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --read-files|--reference)
       IFS=',' read -ra ADDR <<< "$2"
-      for f in "${ADDR[@]}"; do
+      for f in ${ADDR[@]+"${ADDR[@]}"}; do
         f=$(echo "$f" | xargs)
         [ -n "$f" ] && read_files+=("$f")
       done
@@ -254,11 +254,13 @@ if [ ${#read_files[@]} -gt 0 ]; then
 fi
 
 # Auto-detect test file in verification_command if not explicitly added
+read_files_joined=""
+if [ ${#read_files[@]} -gt 0 ]; then read_files_joined=" ${read_files[*]} "; fi
 if [ -n "$verification_command" ]; then
   set -f
   for word in $verification_command; do
     if [[ "$word" =~ \.(test|spec)\.[a-zA-Z0-9]+$ ]] || [[ "$word" =~ test_.*\.py$ ]]; then
-      if [ -f "$word" ] && shunt_read_allowed "$word" && [[ ! " ${read_files[*]} " =~ " ${word} " ]]; then
+      if [ -f "$word" ] && shunt_read_allowed "$word" && [[ ! "$read_files_joined" =~ " ${word} " ]]; then
         echo "=== Test File Reference: $word ===" >> "$context_file"
         cat -- "$word" >> "$context_file"
         echo "" >> "$context_file"
@@ -492,7 +494,9 @@ JSON
   while IFS= read -r line; do
     if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE|STAGED_WRITE):([^:]+) ]]; then
       fpath="${BASH_REMATCH[2]}"
-      [[ ! " ${modified_files[*]} " =~ " ${fpath} " ]] && modified_files+=("$fpath")
+      modified_joined=""
+      if [ ${#modified_files[@]} -gt 0 ]; then modified_joined=" ${modified_files[*]} "; fi
+      [[ ! "$modified_joined" =~ " ${fpath} " ]] && modified_files+=("$fpath")
     fi
   done <<< "$apply_output"
 
@@ -548,18 +552,18 @@ done
 # Calculate diff summary if git is available
 diff_summary=""
 if command -v git >/dev/null 2>&1 && [ ${#modified_files[@]} -gt 0 ]; then
-  diff_summary=$(git diff --stat -- "${modified_files[@]}" 2>/dev/null | tail -1 | xargs || true)
+  diff_summary=$(git diff --stat -- ${modified_files[@]+"${modified_files[@]}"} 2>/dev/null | tail -1 | xargs || true)
 fi
 [ -z "$diff_summary" ] && diff_summary="Modified ${#modified_files[@]} file(s)"
 
 # 6. Capability D: Clean Output Payload for Cloud Agent
 if [ "$success" = "true" ]; then
   # Build modified files JSON array
-  mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
+  mod_json=$(printf '%s\n' ${modified_files[@]+"${modified_files[@]}"} | jq -R . | jq -s .)
 
   shunt_audit task-exec status=success task_id="$task_id" attempts="$attempt" \
     sandbox="$sandbox_backend" apply_mode="$apply_mode" \
-    files="$(printf '%s ' "${modified_files[@]}")"
+    files="$(printf '%s ' ${modified_files[@]+"${modified_files[@]}"})"
 
   jq -n \
     --arg status "success" \
@@ -592,7 +596,7 @@ else
     rolled_back=true
   fi
 
-  mod_json=$(printf '%s\n' "${modified_files[@]}" | jq -R . | jq -s .)
+  mod_json=$(printf '%s\n' ${modified_files[@]+"${modified_files[@]}"} | jq -R . | jq -s .)
   shunt_audit task-exec status=failed task_id="$task_id" attempts="$max_retries" \
     sandbox="$sandbox_backend" apply_mode="$apply_mode" rolled_back="$rolled_back"
   combined_err="$last_stderr"

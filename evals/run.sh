@@ -9,6 +9,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/.fixtures"
+# Native path for hook input (Windows Python cannot open MSYS-style /d/... paths).
+if command -v cygpath >/dev/null 2>&1; then
+  FIXTURES_INPUT="$(cygpath -m "$FIXTURES")"
+else
+  FIXTURES_INPUT="$FIXTURES"
+fi
 PASSED=0
 FAILED=0
 TOTAL=0
@@ -111,7 +117,7 @@ run_suite() {
     name=$(jq -r ".evals[$i].name" "$evals_file")
     expected=$(jq -r ".evals[$i].expected_decision" "$evals_file")
     reason=$(jq -r ".evals[$i].reason" "$evals_file")
-    input=$(jq -c ".evals[$i].input" "$evals_file" | sed "s|{{FIXTURES}}|$FIXTURES|g")
+    input=$(jq -c ".evals[$i].input" "$evals_file" | sed "s|{{FIXTURES}}|$FIXTURES_INPUT|g")
 
     local env_json
     env_json=$(jq -r ".evals[$i].env // empty" "$evals_file")

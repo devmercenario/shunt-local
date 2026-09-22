@@ -6,6 +6,12 @@ shunt_doctor() {
   local json_mode=false
   if [ "${1:-}" = "--json" ]; then json_mode=true; fi
 
+  # Doctor must always produce a report; a stray failing command inside a check
+  # should not abort the whole function under `set -e`.
+  local had_e=0
+  case "$-" in *e*) had_e=1 ;; esac
+  set +e
+
   local n_pass=0 n_warn=0 n_fail=0
   local -a records=()
 
@@ -136,6 +142,7 @@ shunt_doctor() {
   local status="ok"
   if [ "$n_warn" -gt 0 ]; then status="warn"; fi
   if [ "$n_fail" -gt 0 ]; then status="fail"; fi
+  if [ "$had_e" = "1" ]; then set -e; fi
 
   if [ "$json_mode" = true ]; then
     local checks="[]" rec st name msg

@@ -8,6 +8,7 @@ PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIB="$PLUGIN_DIR/scripts/lib/update-verify.sh"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASSED=0

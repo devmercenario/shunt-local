@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 mkdir -p "$WORKDIR/home/.config/shunt-local"
 
@@ -36,11 +37,12 @@ set +e
 out=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor 2>&1)
 rc=$?
 set -e
+if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" >&2; fi
 check "healthy-exit" "0" "$rc" "doctor exits 0 with warnings only"
 check "healthy-endpoint" "yes" "$(printf '%s' "$out" | grep -q 'pass.*endpoint' && echo yes || echo no)" "endpoint validated"
 
 # JSON mode is machine-readable.
-json=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor --json 2>/dev/null)
+json=$(HOME="$WORKDIR/home" bash "$PLUGIN_DIR/scripts/shunt-local" doctor --json 2>/dev/null || true)
 check "json-status" "warn" "$(printf '%s' "$json" | jq -r '.status')" "JSON status reflects warnings"
 check "json-checks" "true" "$(printf '%s' "$json" | jq -r '.checks | length > 0')" "JSON includes checks"
 
