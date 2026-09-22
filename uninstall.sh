@@ -56,6 +56,13 @@ if [ -f "$HOOKS_FILE" ] && command -v jq >/dev/null 2>&1; then
   echo "Removed hooks from $HOOKS_FILE"
 fi
 
+# 7. Remove OpenCode plugin if present
+OPENCODE_PLUGIN="${HOME}/.config/opencode/plugins/shunt-local.ts"
+if [ -f "$OPENCODE_PLUGIN" ]; then
+  rm -f "$OPENCODE_PLUGIN"
+  echo "Removed OpenCode plugin from $OPENCODE_PLUGIN"
+fi
+
 # 7. Purge configuration (removes API keys and all user config)
 if [ "$PURGE" = "true" ]; then
   if [ -d "$CONFIG_DIR" ]; then

@@ -6,8 +6,8 @@
   <p align="center">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
     <a href="https://github.com/ggml-org/llama.cpp"><img src="https://img.shields.io/badge/Backend-llama.cpp%20%7C%20vLLM%20%7C%20Ollama-orange.svg" alt="Backends"></a>
-    <a href="#"><img src="https://img.shields.io/badge/Evals-65%2F65%20Passing-brightgreen.svg" alt="Evals"></a>
-    <a href="#"><img src="https://img.shields.io/badge/Platform-Google%20Antigravity%20%7C%20Claude%20Code%20%7C%20Cursor-purple.svg" alt="Platforms"></a>
+    <a href="#"><img src="https://img.shields.io/badge/Evals-73%2F73%20Passing-brightgreen.svg" alt="Evals"></a>
+    <a href="#"><img src="https://img.shields.io/badge/Platform-Antigravity%20%7C%20Claude%20Code%20%7C%20OpenCode%20%7C%20Cursor-purple.svg" alt="Platforms"></a>
     <a href="#"><img src="https://img.shields.io/badge/OS-Linux%20%7C%20macOS%20%7C%20Windows%20WSL2-blue.svg" alt="OS Support"></a>
   </p>
 </p>
@@ -206,7 +206,8 @@ The installer will:
 4. Install agent skills (`bulk-reader`, `code-writer`, `subtask-worker`) into `~/.agents/skills/`.
 5. Register with Google Antigravity (`agy plugin install .` and `~/.gemini/config/hooks.json`).
 6. Register with Claude Code (`claude plugin install .` if `claude` is detected).
-7. Validate your `$PATH` to ensure `~/.local/bin` is accessible.
+7. Install OpenCode native plugin (`~/.config/opencode/plugins/shunt-local.ts` if OpenCode is detected).
+8. Validate your `$PATH` to ensure `~/.local/bin` is accessible.
 
 ### 🌐 Operating System & Platform Compatibility
 
@@ -218,6 +219,7 @@ The installer will:
 | **Windows (Native CMD / PowerShell)** | Manual CLI | Requires WSL2 or bash environment for lifecycle hooks. |
 | **Google Antigravity & Gemini CLI** | **100% Native** | PreToolUse hooks intercept `view_file` and `run_command` automatically. |
 | **Claude Code** | **100% Native** | Official plugin structure; intercepts `Read` and `Bash` via `hooks.json`. |
+| **OpenCode** | **100% Native** | Official TypeScript plugin (`shunt-local.ts`) intercepting `read` and `bash`. |
 | **Cursor** | Native CLI + Rules | Use bundled `.cursorrules` / `.cursor/rules/shunt-local.mdc` to guide delegation. |
 
 ### Clean Uninstall

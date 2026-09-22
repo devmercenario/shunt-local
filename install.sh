@@ -115,7 +115,18 @@ if command -v claude >/dev/null 2>&1; then
   claude plugin install "$SCRIPT_DIR" 2>/dev/null || claude plugin add "$SCRIPT_DIR" 2>/dev/null || true
 fi
 
-# 9. Verify PATH includes ~/.local/bin (important for macOS and non-standard Linux setups)
+# 9. Register OpenCode plugin if OpenCode is present
+OPENCODE_CONFIG_DIR="${HOME}/.config/opencode"
+OPENCODE_PLUGINS_DIR="${OPENCODE_CONFIG_DIR}/plugins"
+if [ -d "$OPENCODE_CONFIG_DIR" ] || command -v opencode >/dev/null 2>&1; then
+  mkdir -p "$OPENCODE_PLUGINS_DIR"
+  chmod 700 "$OPENCODE_PLUGINS_DIR" 2>/dev/null || true
+  cp "$SCRIPT_DIR/plugins/opencode/shunt-local.ts" "$OPENCODE_PLUGINS_DIR/shunt-local.ts"
+  chmod 600 "$OPENCODE_PLUGINS_DIR/shunt-local.ts" 2>/dev/null || true
+  echo "Installed OpenCode native plugin -> $OPENCODE_PLUGINS_DIR/shunt-local.ts"
+fi
+
+# 10. Verify PATH includes ~/.local/bin (important for macOS and non-standard Linux setups)
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
