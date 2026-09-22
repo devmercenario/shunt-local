@@ -17,7 +17,7 @@ REPO = sys.argv[1]
 LIB = os.path.join(REPO, "scripts", "lib", "local-llm.sh")
 random.seed(1337)
 
-DANGEROUS = set(";|&<>`$(){}[]*?~!\\\"'\t\r\n")
+DANGEROUS = set(";|&<>`$(){}[]*?~!\"'\t\r\n")
 ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789._/:=@+- ;|&<>`$(){}[]*?~!\\\"'\t"
 
 CURATED_BAD = [

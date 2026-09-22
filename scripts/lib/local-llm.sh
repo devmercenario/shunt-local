@@ -563,7 +563,9 @@ shunt_validate_exec_command() {
   # the explicit --allow-unsafe + SHUNT_ALLOW_UNSAFE=true escape hatch.
   local tok
   for tok in "${argv[@]}"; do
-    if ! [[ "$tok" =~ ^[A-Za-z0-9_./:=@+-]+$ ]]; then
+    # Backslash is allowed: commands are exec'd as argv without a shell, so it
+    # cannot escape anything (Windows paths need it).
+    if ! [[ "$tok" =~ ^[A-Za-z0-9_./:=@+\\-]+$ ]]; then
       echo "🔒 BLOCKED: $label contains an unsafe token: '$tok'" >&2
       echo "   Only simple commands are allowed by default." >&2
       echo "   Bypass with --allow-unsafe + SHUNT_ALLOW_UNSAFE=true if truly needed." >&2
@@ -574,6 +576,7 @@ shunt_validate_exec_command() {
   # Program denylist: network clients (exfiltration), file readers/writers whose
   # output could leak secrets into test_output, and persistence/interpreter tools.
   local prog="${argv[0]##*/}"
+  prog="${prog##*\\}"
   prog=$(printf '%s' "$prog" | tr '[:upper:]' '[:lower:]')
   case "$prog" in
     curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp|lftp|smbclient|\
