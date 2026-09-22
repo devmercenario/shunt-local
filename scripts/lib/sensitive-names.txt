@@ -1,0 +1,55 @@
+# Canonical list of files whose modification (or read) enables code execution,
+# credential theft or CI/supply-chain persistence. One name per line; blank
+# lines and lines starting with '#' are ignored.
+#
+# Consumed by scripts/lib/paths.py, scripts/lib/local-llm.sh (code-write) and
+# mirrored by plugins/opencode/shunt-local.ts (kept in sync by a packaging eval).
+# The `.env.*` family is matched by prefix in code, not listed here.
+.git
+.github
+.gitlab
+.circleci
+.husky
+.githooks
+.env
+.env.local
+.env.production
+.npmrc
+.pypirc
+.netrc
+.gitmodules
+.gitattributes
+.bashrc
+.profile
+.zshrc
+package.json
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+Makefile
+makefile
+GNUmakefile
+Dockerfile
+docker-compose.yml
+docker-compose.yaml
+Gemfile
+Gemfile.lock
+Cargo.toml
+Cargo.lock
+go.mod
+go.sum
+pyproject.toml
+setup.py
+setup.cfg
+pytest.ini
+tox.ini
+requirements.txt
+poetry.lock
+shunt.config.json
+install.sh
+shunt-update
+authorized_keys
+id_rsa
+id_ed25519
+credentials

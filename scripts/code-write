@@ -113,26 +113,10 @@ if [ -n "$target" ]; then
         ;;
     esac
   fi
-  if [ "${SHUNT_ALLOW_SENSITIVE_WRITES:-}" != "true" ]; then
-    target_base=$(basename "$real_target")
-    case "$target_base" in
-      .env|.env.*|.npmrc|.pypirc|.netrc|.gitmodules|.gitattributes|.bashrc|.profile|.zshrc|\
-      package.json|package-lock.json|npm-shrinkwrap.json|yarn.lock|pnpm-lock.yaml|\
-      Makefile|makefile|GNUmakefile|Dockerfile|docker-compose.yml|docker-compose.yaml|\
-      Gemfile|Gemfile.lock|Cargo.toml|Cargo.lock|go.mod|go.sum|pyproject.toml|\
-      setup.py|setup.cfg|pytest.ini|tox.ini|requirements.txt|poetry.lock|shunt.config.json)
-        echo "Error: refusing to overwrite sensitive file '$real_target'." >&2
-        echo "  Set SHUNT_ALLOW_SENSITIVE_WRITES=true to allow this." >&2
-        exit 1
-        ;;
-    esac
-    case "/$real_target/" in
-      */.git/*|*/.github/*|*/.gitlab/*|*/.circleci/*|*/.husky/*|*/.githooks/*)
-        echo "Error: refusing to write inside a VCS/CI directory: $real_target" >&2
-        echo "  Set SHUNT_ALLOW_SENSITIVE_WRITES=true to allow this." >&2
-        exit 1
-        ;;
-    esac
+  if [ "${SHUNT_ALLOW_SENSITIVE_WRITES:-}" != "true" ] && shunt_path_sensitive "$real_target"; then
+    echo "Error: refusing to overwrite protected file '$real_target'." >&2
+    echo "  Set SHUNT_ALLOW_SENSITIVE_WRITES=true to allow this." >&2
+    exit 1
   fi
 
   target_dir=$(dirname "$target")

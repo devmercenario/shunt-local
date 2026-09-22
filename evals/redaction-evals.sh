@@ -91,6 +91,18 @@ printf 'api_key = AKIAIOSFODNN7EXAMPLE\n' > "$WORKDIR/work/leak.txt"
     "$PLUGIN_DIR/scripts/bulk-read" --question q --paths "$WORKDIR/work/leak.txt" ) >/dev/null 2>&1 || true
 check "e2e-secret-redacted" "no" "$(grep -q 'AKIAIOSFODNN7EXAMPLE' "$WORKDIR/payload.json" 2>/dev/null && echo yes || echo no)" "secret absent from the outbound payload"
 
+# --- shared sensitive-name detection (canonical file) ---
+libcheck() { HOME="$WORKDIR/home" bash -c ". '$LIB' >/dev/null 2>&1; $1" >/dev/null 2>&1 && echo 0 || echo 1; }
+check "sensitive-name-git" "0" "$(libcheck 'shunt_is_sensitive_name .git')" "exact sensitive name matches"
+check "sensitive-name-env-prefix" "0" "$(libcheck 'shunt_is_sensitive_name .env.staging')" ".env.* prefix matches"
+check "sensitive-name-normal" "1" "$(libcheck 'shunt_is_sensitive_name module.py')" "normal name does not match"
+check "sensitive-path-dir" "0" "$(libcheck 'shunt_path_sensitive a/.git/config')" "sensitive path component detected"
+check "sensitive-path-ok" "1" "$(libcheck 'shunt_path_sensitive src/module.py')" "normal path allowed"
+check "list-contains-hit" "0" "$(libcheck $'shunt_list_contains b "a\nb\nc"')" "list membership hit"
+check "list-contains-miss" "1" "$(libcheck $'shunt_list_contains x "a\nb\nc"')" "list membership miss"
+# Regex metacharacters in a name must not be interpreted (no =~ regex bug).
+check "list-regex-safe" "1" "$(libcheck $'shunt_list_contains "a.c" "abc\nxyz"')" "membership is literal, not regex"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

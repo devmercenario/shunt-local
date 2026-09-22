@@ -292,6 +292,40 @@ shunt_realpath() {
   shunt_to_posix "$p"
 }
 
+# Membership test for a newline-delimited list (exact match, no regex).
+shunt_list_contains() {
+  local needle="$1" list="${2:-}" line
+  while IFS= read -r line; do
+    [ "$line" = "$needle" ] && return 0
+  done <<< "$list"
+  return 1
+}
+
+# Is a single path component a protected name? (canonical list + .env.* family)
+shunt_is_sensitive_name() {
+  local name="$1" line
+  case "$name" in .env.*) return 0 ;; esac
+  local file="${SHUNT_LIB_DIR:-}/sensitive-names.txt"
+  [ -f "$file" ] || return 1
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    [ "$line" = "$name" ] && return 0
+  done < "$file"
+  return 1
+}
+
+# Does any component of a path match a protected name?
+shunt_path_sensitive() {
+  local p="${1//\\//}" part
+  local IFS='/'
+  for part in $p; do
+    [ -n "$part" ] || continue
+    shunt_is_sensitive_name "$part" && return 0
+  done
+  return 1
+}
+
 # Reads are confined to the working directory unless explicitly opted out.
 shunt_read_allowed() {
   local p="$1" real cwd

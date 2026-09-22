@@ -31,6 +31,19 @@ check "opencode-package" "opencode-shunt-local" "$(jq -r '.name // empty' "$PLUG
 check "opencode-main-exists" "yes" "$([ -f "$PLUGIN_DIR/plugins/opencode/$(jq -r '.main' "$PLUGIN_DIR/plugins/opencode/package.json")" ] && echo yes || echo no)" "OpenCode main file exists"
 check "settings-deny" "true" "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_DIR/settings.json")" "settings.json ships deny rules"
 
+# The three sensitive-name copies must not drift (canonical txt vs OpenCode TS).
+txt_names=$(grep -v '^#' "$PLUGIN_DIR/scripts/lib/sensitive-names.txt" | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)
+ts_names=$(python3 - "$PLUGIN_DIR/plugins/opencode/shunt-local.ts" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"new Set\(\[(.*?)\]\)", s, re.S)
+names = sorted(set(re.findall(r"'([^']+)'", m.group(1))))
+print("\n".join(names))
+PY
+)
+if [ "$txt_names" = "$ts_names" ]; then same=yes; else same=no; fi
+check "sensitive-list-sync" "yes" "$same" "OpenCode sensitive list matches the canonical file"
+
 versions=$(for f in "$PLUGIN_DIR/plugin.json" "$PLUGIN_DIR/.claude-plugin/plugin.json" "$PLUGIN_DIR/.codex-plugin/plugin.json" "$PLUGIN_DIR/plugins/opencode/package.json"; do jq -r '.version // empty' "$f"; done | sort -u | wc -l | tr -d ' ')
 check "version-consistency" "1" "$versions" "all manifests share one version"
 

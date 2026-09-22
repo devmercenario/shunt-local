@@ -257,13 +257,13 @@ if [ ${#read_files[@]} -gt 0 ]; then
 fi
 
 # Auto-detect test file in verification_command if not explicitly added
-read_files_joined=""
-if [ ${#read_files[@]} -gt 0 ]; then read_files_joined=" ${read_files[*]} "; fi
+read_files_list=""
+if [ ${#read_files[@]} -gt 0 ]; then read_files_list=$(printf '%s\n' "${read_files[@]}"); fi
 if [ -n "$verification_command" ]; then
   set -f
   for word in $verification_command; do
     if [[ "$word" =~ \.(test|spec)\.[a-zA-Z0-9]+$ ]] || [[ "$word" =~ test_.*\.py$ ]]; then
-      if [ -f "$word" ] && shunt_read_allowed "$word" && [[ ! "$read_files_joined" =~ " ${word} " ]]; then
+      if [ -f "$word" ] && shunt_read_allowed "$word" && ! shunt_list_contains "$word" "$read_files_list"; then
         echo "=== Test File Reference: $word ===" >> "$context_file"
         cat -- "$word" >> "$context_file"
         echo "" >> "$context_file"
@@ -497,9 +497,9 @@ JSON
   while IFS= read -r line; do
     if [[ "$line" =~ ^(APPLIED_DIFF|WROTE_FILE|STAGED_WRITE):([^:]+) ]]; then
       fpath="${BASH_REMATCH[2]}"
-      modified_joined=""
-      if [ ${#modified_files[@]} -gt 0 ]; then modified_joined=" ${modified_files[*]} "; fi
-      [[ ! "$modified_joined" =~ " ${fpath} " ]] && modified_files+=("$fpath")
+      modified_list=""
+      if [ ${#modified_files[@]} -gt 0 ]; then modified_list=$(printf '%s\n' "${modified_files[@]}"); fi
+      if ! shunt_list_contains "$fpath" "$modified_list"; then modified_files+=("$fpath"); fi
     fi
   done <<< "$apply_output"
 

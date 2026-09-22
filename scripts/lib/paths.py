@@ -9,9 +9,9 @@ import re
 import shutil
 import subprocess
 
-# Files/directories whose modification enables code execution, credential theft
-# or CI/supply-chain persistence. Writable inside the CWD, but not by default.
-SENSITIVE_NAMES = {
+# Canonical list (scripts/lib/sensitive-names.txt). The embedded set is a
+# fallback for when paths.py is used without its sibling data file.
+_FALLBACK_SENSITIVE = {
     ".git", ".github", ".gitlab", ".circleci", ".husky", ".githooks",
     ".env", ".env.local", ".env.production", ".npmrc", ".pypirc", ".netrc",
     ".gitmodules", ".gitattributes", ".bashrc", ".profile", ".zshrc",
@@ -23,6 +23,24 @@ SENSITIVE_NAMES = {
     "poetry.lock", "shunt.config.json", "install.sh", "shunt-update",
     "authorized_keys", "id_rsa", "id_ed25519", "credentials",
 }
+
+
+def _load_sensitive_names() -> set:
+    data_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sensitive-names.txt")
+    try:
+        with open(data_file, encoding="utf-8") as handle:
+            names = {line.strip() for line in handle
+                     if line.strip() and not line.lstrip().startswith("#")}
+        return names or set(_FALLBACK_SENSITIVE)
+    except OSError:
+        return set(_FALLBACK_SENSITIVE)
+
+
+SENSITIVE_NAMES = _load_sensitive_names()
+
+
+def is_sensitive_name(name: str) -> bool:
+    return name in SENSITIVE_NAMES or name.startswith(".env.")
 
 
 def to_native(path: str) -> str:
@@ -58,7 +76,7 @@ def is_sensitive_path(abs_path: str, cwd: str) -> bool:
     if rel == ".." or rel.startswith(".." + os.sep):
         return True
     for part in _parts(rel):
-        if part in SENSITIVE_NAMES:
+        if is_sensitive_name(part):
             return True
     return False
 

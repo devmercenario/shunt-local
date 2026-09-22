@@ -47,8 +47,9 @@ function isSafeWritePath(filePath: string): boolean {
   const inside = rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   if (!inside && !allowOutside) return false;
   if (process.env.SHUNT_ALLOW_SENSITIVE_WRITES !== 'true') {
-    if (SENSITIVE_NAMES.has(path.basename(resolved))) return false;
-    if (rel.split(path.sep).some((part) => SENSITIVE_NAMES.has(part))) return false;
+    const isSensitive = (name: string) => SENSITIVE_NAMES.has(name) || name.startsWith('.env.');
+    if (isSensitive(path.basename(resolved))) return false;
+    if (rel.split(path.sep).some(isSensitive)) return false;
   }
   return true;
 }
