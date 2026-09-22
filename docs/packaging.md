@@ -15,10 +15,22 @@ them. Run `shunt-local doctor` after installing to confirm registration.
   claude plugin marketplace add devmercenario/shunt-local
   claude plugin install shunt-local@shunt-local
   ```
-- **[owner]** To publish in the community catalog, open a PR against
-  `anthropics/claude-plugins-community` adding this plugin (it is pinned to a
-  commit SHA by their CI). The hardened plugin defaults to `confirm` apply mode
-  and never auto-approves.
+- Submission form fields (`https://clau.de/plugin-directory-submission`):
+  - **Name:** `shunt-local`
+  - **Repository / Homepage:** `https://github.com/devmercenario/shunt-local`
+  - **License:** Apache-2.0
+  - **Description:** Shunts large file reads and boilerplate generation to a
+    local LLM (llama.cpp/Ollama/vLLM) to save cloud tokens, with a sandboxed,
+    approval-gated subtask worker, secret redaction, read/write confinement and
+    an audit log.
+  - **Keywords:** tokens, local-llm, delegation, sandbox
+- **[owner]** To publish in the community catalog, submit via
+  `https://clau.de/plugin-directory-submission`. The catalog repository
+  (`anthropics/claude-plugins-community`) is a read-only mirror and closes
+  direct PRs automatically, so there is no PR to open. Until it is approved,
+  users can install from this repository directly
+  (`claude plugin marketplace add devmercenario/shunt-local`). The plugin
+  defaults to `confirm` apply mode and never auto-approves.
 
 ## Cursor
 
