@@ -50,6 +50,14 @@ Cloud Agent (untrusted input via prompt injection)
 7. **Fail-Open Design**: When the local LLM is offline, hooks allow normal cloud agent operation — they never block the developer's workflow. Disallowed endpoints are treated as offline (fail-closed for the network, fail-open for the workflow).
 8. **Supply-Chain Hardening**: `shunt-update` is a dry-run by default (`--yes` to apply) and refuses to pull from untrusted remotes unless `SHUNT_ALLOW_UNTRUSTED_REMOTE=true`. The remote host is compared by **exact hostname**, so spoofed hosts such as `github.com.evil.example` are rejected. The installer refuses to register a repository as trusted (`trustedFolders.json`) when it is not owned by you or is writable by group/other, and `uninstall.sh` removes the trust entry it added.
 9. **Untrusted Output Labelling**: Local-model and command output is derived from untrusted repository content and is explicitly labelled as such in `bulk-read` output and the `task-exec` JSON payload (`untrusted_notice`). Agents must treat it as data, never as instructions.
+10. **Command Sandboxing**: `--test-cmd` / `--rollback-cmd` are executed inside an OS sandbox when one is available (`bwrap`, `firejail`, or `docker`/`podman` via `SHUNT_SANDBOX`). The sandbox uses a read-only root, a read-write bind of the working directory only, a private `/tmp`, and **no network** unless `SHUNT_SANDBOX_NETWORK=true`. `SHUNT_SANDBOX_STRICT=true` refuses to run at all when no sandbox is available.
+11. **Explicit Approval Before Writing/Executing**: `task-exec` and `code-write` never auto-apply. `--apply-mode confirm` (the default) returns a `needs_confirmation` plan to a non-interactive caller and prompts interactively; `--dry-run` stages changes and returns a proposed diff without writing or running anything. Auto-apply requires `--yes` / `SHUNT_ASSUME_YES=true`.
+12. **Read Confinement**: `bulk-read`, `code-write` and `task-exec` refuse to read files outside the working directory (`SHUNT_ALLOW_READS_OUTSIDE_CWD=true` opts out).
+13. **Secret Redaction**: Every outbound payload is scrubbed of private keys, cloud/API tokens and secret assignments (`scripts/lib/redact.py`). `SHUNT_BLOCK_ON_SECRETS=true` refuses the request instead of sending it.
+14. **Key Sources**: `SHUNT_API_KEY_CMD` (e.g. a keyring lookup) or `SHUNT_API_KEY_FILE` resolve the key when `SHUNT_API_KEY` is unset, so secrets need not be stored in `config.json`.
+15. **Audit Log**: `task-exec` and `code-write` append JSONL records (tool, status, files, sandbox, apply-mode) to `~/.config/shunt-local/audit.log` (0600).
+16. **Verifiable Updates**: `shunt-update --verify` (or `SHUNT_UPDATE_REQUIRE_SIGNATURE=true`) refuses to apply a fetched ref unless it carries a valid commit signature or a cosign-signed `SHA256SUMS`. Releases are built and signed in CI.
+17. **Cross-Platform Guard**: the PreToolUse guard is `hooks/shunt_guard.py` (Python 3), so the same gate runs on Windows, macOS and Linux. The bash scripts under `hooks/` are thin wrappers.
 
 ### Opt-in escape hatches (all off by default)
 
@@ -61,6 +69,14 @@ Cloud Agent (untrusted input via prompt injection)
 | `SHUNT_ALLOW_WRITES_OUTSIDE_CWD=true` | Let `--files` targets be written outside the working directory. |
 | `SHUNT_ALLOW_SENSITIVE_WRITES=true` | Allow writes to protected VCS/CI/credential/build files (`.git/`, `.github/`, `.env`, `package.json`, …). |
 | `SHUNT_ALLOW_UNTRUSTED_REMOTE=true` | Let `shunt-update` pull from non-GitHub/GitLab/Bitbucket remotes. |
+| `SHUNT_ALLOW_READS_OUTSIDE_CWD=true` | Let `bulk-read`/`code-write`/`task-exec` read files outside the working directory. |
+| `SHUNT_SANDBOX=none` | Disable command sandboxing (default `auto`). |
+| `SHUNT_SANDBOX_NETWORK=true` | Keep network access inside the sandbox (off by default). |
+| `SHUNT_SANDBOX_STRICT=true` | Refuse to run when no sandbox backend is available. |
+| `SHUNT_APPLY_MODE=auto` | Skip the confirmation gate (the CLI `--yes` is equivalent). |
+| `SHUNT_REDACT_SECRETS=false` | Disable secret redaction of outbound payloads. |
+| `SHUNT_BLOCK_ON_SECRETS=true` | Refuse to send a payload when secrets are detected. |
+| `SHUNT_UPDATE_REQUIRE_SIGNATURE=true` | Require a verified signature before applying an update. |
 
 ### Harness compatibility
 
@@ -78,12 +94,14 @@ On the allow path, Claude Code and Codex receive **no decision** rather than `pe
 
 ### Known Limitations
 
-- **No sandboxing**: Commands passed to `--test-cmd` and `--rollback-cmd` execute directly on the host OS. Safe mode avoids a shell entirely and rejects network/reader/destructive programs, but a legitimate test runner (e.g. `npm test`, `pytest`) still executes project code. Consider using `firejail` or `bwrap` for high-security environments.
+- **Sandbox is best-effort**: when `bwrap`/`firejail`/docker are unavailable the command still runs on the host (unless `SHUNT_SANDBOX_STRICT=true`), and a legitimate test runner executes project code inside the sandbox. Network and filesystem are restricted, but the sandbox is not a kernel-level guarantee for every platform.
+- **No independent audit yet**: the controls above are self-assessed and covered by 187 evals, but the project has not undergone an external security review.
 - **Compound test commands require opt-in**: Legitimate shell compound commands (pipes, `&&`, variable expansion) are blocked by default; enable them deliberately with `--allow-unsafe` + `SHUNT_ALLOW_UNSAFE=true`.
-- **Untrusted model output**: The local model reads untrusted repository content and its output is labelled, not sanitized. A prompt injection embedded in a file can be reproduced in the model's reply; treat all delegated output as data and never let it drive command or file-write decisions without review.
-- **Bash hook coverage**: The bash read interceptor covers `cat`, `head`, `tail`, `less`, `more`, `bat`, `tac`, `nl`, and `pr`. Other file-reading commands (e.g., `awk`, `sed`, `python -c`) are not intercepted.
+- **Untrusted model output**: The local model reads untrusted repository content and its output is labelled and redacted, not semantically sanitized. A prompt injection embedded in a file can be reproduced in the model's reply; treat all delegated output as data and never let it drive command or file-write decisions without review.
+- **Read-gate coverage**: The read interceptor covers `Read`/`view_file` and shell reads (`cat`, `head`, `tail`, `less`, `more`, `bat`, `tac`, `nl`, `pr`). Other file-reading commands (e.g. `awk`, `sed`, `python -c`) are not intercepted.
 - **Cursor integration**: the installer registers native Cursor `preToolUse` hooks, but Cursor also offers advisory rules. The agent may still ignore the delegation guidance, and Cursor's `@`-style context attachments are not gated. Treat Cursor enforcement as best-effort.
-- **Coverage gaps**: the read gate only matches `Read`/`view_file` and shell reads. It does not intercept `Grep`, `Write`/`Edit`, MCP tools, or files pulled in via `@`/context attachments (the harness runs no `PreToolUse` hook for those). On Codex only the `Bash` path is gated; Codex file reads through MCP are not.
+- **Coverage gaps**: the read gate does not intercept `Grep`, `Write`/`Edit`, MCP tools, or files pulled in via `@`/context attachments (the harness runs no `PreToolUse` hook for those). On Codex only the `Bash` path is gated; Codex file reads through MCP are not.
+- **Windows is untested in CI**: the guard is cross-platform Python, but CI only exercises Linux and macOS.
 
 ## Configuration Security
 
