@@ -43,6 +43,9 @@ PY
 )
 if [ "$txt_names" = "$ts_names" ]; then same=yes; else same=no; fi
 check "sensitive-list-sync" "yes" "$same" "OpenCode sensitive list matches the canonical file"
+check "architecture-doc" "yes" \
+  "$([ -f "$PLUGIN_DIR/docs/architecture.md" ] && [ -f "$PLUGIN_DIR/docs/threat-model.md" ] && echo yes || echo no)" \
+  "architecture and threat-model docs exist"
 
 versions=$(for f in "$PLUGIN_DIR/plugin.json" "$PLUGIN_DIR/.claude-plugin/plugin.json" "$PLUGIN_DIR/.codex-plugin/plugin.json" "$PLUGIN_DIR/plugins/opencode/package.json"; do jq -r '.version // empty' "$f"; done | sort -u | wc -l | tr -d ' ')
 check "version-consistency" "1" "$versions" "all manifests share one version"

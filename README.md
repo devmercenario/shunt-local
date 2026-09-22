@@ -304,7 +304,31 @@ shunt-local stats
 
 ### Autonomous Subtask Worker (`shunt-local exec`)
 
-Execute micro-tasks locally using your GPU LLM with automated test verification, self-correction, and rollback:
+Execute micro-tasks locally using your GPU LLM with automated test verification,
+self-correction, rollback, an **approval gate** and a **sandbox**. Nothing is
+written or executed until the plan is approved (`--yes`), and `--dry-run`
+returns the proposed diff without touching the tree.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Cloud agent
+    participant T as task-exec
+    participant S as Sandbox
+    participant L as Local LLM
+    A->>T: --instruction/--files/--test-cmd
+    T-->>A: needs_confirmation + plan (default)
+    A->>T: --yes after approval
+    T->>L: context (CWD-confined, redacted)
+    L-->>T: proposed edits
+    T->>S: run --test-cmd (no shell, no network)
+    S-->>T: exit code + output
+    T->>T: self-correct / rollback + audit
+    T-->>A: JSON (status, files, test_output, sandbox)
+```
+
+See [`docs/architecture.md`](./docs/architecture.md) for the module map and the
+guard decision flow.
 
 ```bash
 # Direct CLI invocation
