@@ -33,7 +33,9 @@ check "settings-deny" "true" "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_
 
 # The three sensitive-name copies must not drift (canonical txt vs OpenCode TS).
 txt_names=$(grep -v '^#' "$PLUGIN_DIR/scripts/lib/sensitive-names.txt" | tr -d '\r' | grep -v '^[[:space:]]*$' | LC_ALL=C sort -u)
-ts_names=$(python3 - "$PLUGIN_DIR/plugins/opencode/shunt-local.ts" <<'PY'
+ts_file="$PLUGIN_DIR/plugins/opencode/shunt-local.ts"
+if command -v cygpath >/dev/null 2>&1; then ts_file=$(cygpath -w "$ts_file" | tr -d '\r'); fi
+ts_names=$(python3 - "$ts_file" <<'PY'
 import re, sys
 s = open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"new Set\(\[(.*?)\]\)", s, re.S)
