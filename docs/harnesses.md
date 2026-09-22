@@ -52,6 +52,33 @@ The single guard implementation is `hooks/shunt_guard.py`; the bash scripts in
   to sensitive or out-of-project paths throw.
 - Verify: reading a >350-line file throws with a `/bulk-reader` hint.
 
+## Interaction with RTK
+
+[RTK](https://github.com/) is a separate CLI proxy that filters/summarizes
+command output before it reaches the agent. It is **independent** of
+shunt-local, but the two can overlap at the harness layer.
+
+- **No coupling**: shunt-local never calls `rtk`. `bulk-read`, `code-write` and
+  `task-exec` read files directly and send the content to the local endpoint;
+  the local model's input/output is not filtered by rtk. `rtk rewrite` leaves
+  `bulk-read` and `shunt-local exec` unchanged.
+- **Shadowed bash gate (OpenCode)**: both `rtk.ts` and `shunt-local.ts` register
+  `tool.execute.before` for `bash`/`shell`. `rtk.ts` loads first and rewrites
+  `cat file` to `rtk read file`; the shunt-local bash gate does not match the
+  rewritten form, so the bash read gate is bypassed. The native `read`/`write`/
+  `edit` gates are unaffected (rtk only rewrites bash).
+- **Gemini/Antigravity**: rtk registers `BeforeTool`/`run_shell_command` in
+  `~/.gemini/settings.json`, while shunt-local registers `PreToolUse`/
+  `run_command` in `~/.gemini/config/hooks.json`. Depending on the harness, one
+  may not fire; when both do, rtk can rewrite the command first.
+- **Verification commands**: `task-exec` executes `--test-cmd` via `exec`
+  (argv, no harness shell), so rtk never filters it.
+
+Recommendation when running both: let rtk own shell output and disable the
+redundant bash gate with `shunt-local hook run_command off`, keeping the
+`read`/`write` gates and `/bulk-reader` delegation. This behaviour is pinned by
+`evals/rtk-interop-evals.sh`.
+
 ## Common troubleshooting
 
 - **Hooks not firing**: check `shunt-local status` (master switch) and that the
