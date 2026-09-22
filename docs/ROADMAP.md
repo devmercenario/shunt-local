@@ -36,7 +36,7 @@ a regression eval. Items that need an owner action are marked **[owner]**.
 - [ ] OpenCode npm package `opencode-shunt-local` **[owner: npm account]**
 
 ## Phase 4 — Independent audit  **[owner: engage firm]**
-- [ ] Audit brief + SBOM + pinned commit (`docs/audit-brief.md`)
+- [x] Audit brief + SBOM + pinned commit (`docs/audit-brief.md`)
 - [ ] External review (agent<->shell boundary, sandbox, supply chain, injection)
 - [ ] Remediation with per-fix evals
 - [ ] Public advisory
