@@ -112,13 +112,14 @@ if [ -n "$spec_file" ] && [ -f "$spec_file" ]; then
 fi
 
 if [ -n "$spec_json" ]; then
-  parsed_inst=$(echo "$spec_json" | jq -r '.instruction // empty')
-  parsed_tid=$(echo "$spec_json" | jq -r '.task_id // empty')
-  parsed_title=$(echo "$spec_json" | jq -r '.title // empty')
-  parsed_vcmd=$(echo "$spec_json" | jq -r '.verification_command // .test_cmd // empty')
-  parsed_rcmd=$(echo "$spec_json" | jq -r '.rollback_command // .rollback_cmd // empty')
-  parsed_retries=$(echo "$spec_json" | jq -r '.max_retries // empty')
-  parsed_mode=$(echo "$spec_json" | jq -r '.output_mode // empty')
+  # jq on Windows may emit CRLF; strip CR from every parsed value.
+  parsed_inst=$(echo "$spec_json" | jq -r '.instruction // empty' | tr -d '\r')
+  parsed_tid=$(echo "$spec_json" | jq -r '.task_id // empty' | tr -d '\r')
+  parsed_title=$(echo "$spec_json" | jq -r '.title // empty' | tr -d '\r')
+  parsed_vcmd=$(echo "$spec_json" | jq -r '.verification_command // .test_cmd // empty' | tr -d '\r')
+  parsed_rcmd=$(echo "$spec_json" | jq -r '.rollback_command // .rollback_cmd // empty' | tr -d '\r')
+  parsed_retries=$(echo "$spec_json" | jq -r '.max_retries // empty' | tr -d '\r')
+  parsed_mode=$(echo "$spec_json" | jq -r '.output_mode // empty' | tr -d '\r')
 
   [ -n "$parsed_inst" ] && instruction="$parsed_inst"
   [ -n "$parsed_tid" ] && task_id="$parsed_tid"
@@ -129,10 +130,12 @@ if [ -n "$spec_json" ]; then
   [ -n "$parsed_mode" ] && output_mode="$parsed_mode"
 
   while IFS= read -r f; do
+    f="${f%$'\r'}"
     [ -n "$f" ] && target_files+=("$f")
   done < <(echo "$spec_json" | jq -r '(.target_files // .files // [])[]? // empty')
 
   while IFS= read -r f; do
+    f="${f%$'\r'}"
     [ -n "$f" ] && read_files+=("$f")
   done < <(echo "$spec_json" | jq -r '(.read_files // .reference_files // [])[]? // empty')
 fi
