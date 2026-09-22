@@ -14,6 +14,25 @@
 
 ---
 
+## 📑 Table of Contents
+
+- [💡 Why `shunt-local`?](#why-shunt-local)
+- [🚀 Key Advantages](#key-advantages)
+- [🧠 How It Works Under the Hood](#how-it-works-under-the-hood)
+- [📥 Installation](#installation)
+  - [Quick Automated Install](#quick-automated-install)
+  - [Operating System & Platform Compatibility](#operating-system-platform-compatibility)
+  - [Clean Uninstall](#clean-uninstall)
+- [⚙️ Configuration](#configuration)
+- [🎛️ CLI & Management Commands](#cli-management-commands)
+- [🏛️ Architect Engineering Protocol](#architect-engineering-protocol-pre-investigation-grill-me-tdd)
+- [🖥️ Recommended Local Models & Server Setup](#recommended-local-models-server-setup)
+- [🎯 Hands-On Examples](#hands-on-examples)
+- [🧪 Comprehensive Automated Test Suite](#comprehensive-automated-test-suite)
+- [📄 License & Attribution](#license-attribution)
+
+---
+
 ## 💡 Why `shunt-local`?
 
 Modern AI coding agents (**Claude Code**, **Google Antigravity / Gemini CLI**, **Cursor**, **Codex**) are remarkably capable at reasoning, architecture, and multi-step refactoring. However, the standard agent execution loop suffers from a fundamental economic and performance flaw: **Context Bloat**.
