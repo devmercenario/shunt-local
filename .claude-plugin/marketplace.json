@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Delegate bulk reads and boilerplate to a local LLM.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "shunt-local",
       "source": "./",
       "description": "Shunts large file reads and boilerplate generation to local LLMs (llama.cpp, Ollama, vLLM) to save cloud tokens, with a sandboxed, approval-gated task worker.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "shunt-local maintainers"
       },
@@ -24,5 +24,6 @@
         "sandbox"
       ]
     }
-  ]
+  ],
+  "version": "0.2.0"
 }

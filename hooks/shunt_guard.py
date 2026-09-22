@@ -161,6 +161,15 @@ def emit(harness, decision, reason=""):
     sys.stdout.write(json.dumps(out) + "\n")
 
 
+def emit_context(harness, text):
+    """Allow the tool but attach guidance (Claude/Codex only)."""
+    if harness in ("antigravity", "cursor"):
+        emit(harness, "allow")
+        return
+    out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": text}}
+    sys.stdout.write(json.dumps(out) + "\n")
+
+
 def count_lines(path):
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -194,6 +203,8 @@ def infer_kind(name):
         return "bash"
     if lowered in WRITE_TOOLS:
         return "write"
+    if lowered in ("grep", "grep_search", "search"):
+        return "grep"
     if lowered.startswith("mcp__") and re.search(r"(read|view|cat|get|fetch|list)", lowered):
         return "read"
     return "other"
@@ -310,6 +321,18 @@ def main():
     cfg = load_config()
     if not cfg["enabled"] or (kind == "read" and not cfg["view"]) or (kind == "bash" and not cfg["run"]):
         return allow()
+
+    if kind == "grep":
+        # Guidance only: grep is a targeted read, but content output can still
+        # pull many lines. Claude/Codex get additionalContext; others just allow.
+        mode = str(args.get("output_mode") or args.get("outputMode") or "")
+        if mode == "content":
+            emit_context(harness,
+                         "Grep with output_mode=content can pull many lines into context. "
+                         "For whole-file questions prefer the /bulk-reader skill (bulk-read).")
+        else:
+            emit(harness, "allow")
+        return 0
 
     if kind == "read":
         br_paths = before_read_paths(payload)

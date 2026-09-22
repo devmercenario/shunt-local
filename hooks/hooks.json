@@ -27,6 +27,15 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind write"
           }
         ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/shunt_guard.py\" --kind grep"
+          }
+        ]
       }
     ]
   }

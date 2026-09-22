@@ -12,6 +12,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 . "$SCRIPT_DIR/lib/local-llm.sh"
 . "$SCRIPT_DIR/lib/doctor.sh"
+. "$SCRIPT_DIR/lib/stats.sh"
 
 CONFIG_DIR="${HOME}/.config/shunt-local"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
@@ -179,6 +180,7 @@ Control Commands:
   off | disable                Disable master switch (bypass all hooks immediately)
   status                       Show current master switch, subhook, and backend status
   doctor [--json]              Diagnose the installation (deps, config, sandbox, hooks)
+  stats [--json]               Summarize the audit log (delegations, status, sandbox)
   hook <name> <on|off>         Enable or disable a specific subhook (view_file, run_command)
 
 Execution Commands:
@@ -211,6 +213,9 @@ case "$SUBCOMMAND" in
     ;;
   doctor)
     shunt_doctor "$@"
+    ;;
+  stats)
+    shunt_stats "$@"
     ;;
   hook)
     cmd_hook "$@"

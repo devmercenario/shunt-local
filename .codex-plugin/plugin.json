@@ -1,7 +1,7 @@
 {
   "name": "shunt-local",
   "displayName": "Shunt Local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shunts large file reads and boilerplate generation to local LLMs (llama.cpp, Ollama, vLLM) to save up to 90%+ tokens.",
   "hooks": "./hooks/hooks.json"
 }

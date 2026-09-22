@@ -97,6 +97,7 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
     --arg size_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind read" \
     --arg bash_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind bash" \
     --arg write_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind write" \
+    --arg grep_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --kind grep" \
     '. + {
       "shunt-local": {
         "PreToolUse": [
@@ -124,6 +125,15 @@ if [ -d "$GEMINI_CONFIG_DIR" ] || command -v agy >/dev/null 2>&1; then
               {
                 "type": "command",
                 "command": $write_hook
+              }
+            ]
+          },
+          {
+            "matcher": "grep_search",
+            "hooks": [
+              {
+                "type": "command",
+                "command": $grep_hook
               }
             ]
           }
@@ -165,13 +175,15 @@ if [ -d "$CURSOR_CONFIG_DIR" ] || command -v cursor >/dev/null 2>&1; then
       --arg read_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind read" \
       --arg shell_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind bash" \
       --arg write_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind write" \
+      --arg grep_hook "python3 \"$SCRIPT_DIR/hooks/shunt_guard.py\" --harness cursor --kind grep" \
       '.version = 1
        | .hooks = (.hooks // {})
        | .hooks.preToolUse = ((.hooks.preToolUse // []) | map(select(.command | test("shunt_guard.py") | not)))
        | .hooks.preToolUse += [
            {"matcher": "Read", "command": $read_hook},
            {"matcher": "Shell", "command": $shell_hook},
-           {"matcher": "Write", "command": $write_hook}
+           {"matcher": "Write", "command": $write_hook},
+           {"matcher": "Grep", "command": $grep_hook}
          ]
        | .hooks.beforeReadFile = ((.hooks.beforeReadFile // []) | map(select((.command // "") | test("shunt_guard.py") | not)))
        | .hooks.beforeReadFile += [ {"matcher": "Read", "command": $read_hook} ]' \

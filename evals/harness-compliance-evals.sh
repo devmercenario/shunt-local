@@ -128,6 +128,15 @@ check "guard-before-readfile" "deny" "$(printf '%s' "$g" | jq -r '.permission //
 check "cursor-before-readfile-registered" "yes" \
   "$(grep -q 'beforeReadFile' "$PLUGIN_DIR/install.sh" && echo yes || echo no)" \
   "installer registers Cursor beforeReadFile"
+
+# ---- Grep guidance ----
+g=$(guard_run "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Grep\",\"tool_input\":{\"pattern\":\"TODO\",\"output_mode\":\"content\"}}" --kind grep)
+check "guard-grep-context" "true" "$(printf '%s' "$g" | jq -r '(.hookSpecificOutput.additionalContext // "" | length) > 0')" "Grep content adds additionalContext"
+g=$(guard_run "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Grep\",\"tool_input\":{\"pattern\":\"TODO\"}}" --kind grep)
+check "guard-grep-allow" "" "$g" "Grep without content is allowed silently"
+check "claude-grep-matcher" "yes" \
+  "$(jq -r '.hooks.PreToolUse[] | select(.matcher | test("Grep")) | .matcher' "$PLUGIN_DIR/hooks/hooks.json" | grep -q . && echo yes || echo no)" \
+  "Claude hook matches Grep"
 check "claude-deny-rules" "true" \
   "$(jq -r '.permissions.deny | length > 0' "$PLUGIN_DIR/settings.json" 2>/dev/null)" \
   "plugin settings.json denies reading secrets (@-refs bypass hooks)"

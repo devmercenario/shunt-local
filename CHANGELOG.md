@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-22
+
 ### Security
 - Command execution in a sandbox (`bwrap`/`firejail`/docker, no network by
   default) with `SHUNT_SANDBOX_STRICT`.

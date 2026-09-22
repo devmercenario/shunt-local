@@ -1,6 +1,6 @@
 {
   "name": "opencode-shunt-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCode plugin that intercepts large reads and redirects them to shunt-local's local LLM delegation.",
   "type": "module",
   "main": "shunt-local.ts",

@@ -168,6 +168,8 @@ run_external_suite "$SCRIPT_DIR/observability-evals.sh" "Observability suite (au
 run_external_suite "$SCRIPT_DIR/harness-compliance-evals.sh" "Harness compliance suite (Antigravity, Claude Code, Codex, Cursor)"
 run_external_suite "$SCRIPT_DIR/portability-evals.sh" "Portability suite (Windows paths, PowerShell, CRLF)"
 run_external_suite "$SCRIPT_DIR/doctor-evals.sh" "Doctor suite (installation diagnostics)"
+run_external_suite "$SCRIPT_DIR/stats-evals.sh" "Stats suite (audit-log summary)"
+run_external_suite "$SCRIPT_DIR/contract-evals.sh" "Contract suite (per-harness decision schema)"
 run_external_suite "$SCRIPT_DIR/packaging-evals.sh" "Packaging suite (marketplace & package manifests)"
 run_external_suite "$SCRIPT_DIR/opencode-plugin-evals.sh" "OpenCode plugin suite (plugins/opencode/shunt-local.ts)"
 

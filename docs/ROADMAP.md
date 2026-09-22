@@ -20,7 +20,7 @@ a regression eval. Items that need an owner action are marked **[owner]**.
 - [x] Shared write-safety module (`scripts/lib/paths.py`)
 - [x] Claude `Write|Edit` gate (sensitive paths)
 - [x] Claude `@`-reference mitigation via plugin `settings.json` deny rules
-- [ ] Claude `Grep` guidance via `additionalContext`
+- [x] Claude `Grep` guidance via `additionalContext`
 - [x] Cursor `beforeReadFile` (file + `attachments`) and `preToolUse` `Write`
 - [x] Codex `apply_patch` sensitive-write gate and `mcp__*read*` reads
 - [x] OpenCode `write`/`edit`/`multiedit` gate and `grep` guidance
@@ -42,7 +42,7 @@ a regression eval. Items that need an owner action are marked **[owner]**.
 - [ ] Public advisory
 
 ## Phase 5 — Continuous
-- [ ] Contract tests per harness (detect API changes early)
-- [ ] Token-savings / delegation metrics
-- [ ] Per-harness install and troubleshooting docs
-- [ ] Version/changelog discipline
+- [x] Contract tests per harness (detect API changes early)
+- [x] Delegation metrics (`shunt-local stats` over the audit log)
+- [x] Per-harness install and troubleshooting docs (`docs/harnesses.md`)
+- [x] Version/changelog discipline (0.2.0)
