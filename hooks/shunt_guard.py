@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -243,7 +244,9 @@ def resolve_working_dir(args, targets=None):
     proc_cwd = os.path.realpath(os.getcwd())
     home = os.path.expanduser("~")
     gemini_dir = os.path.join(home, ".gemini")
-    if proc_cwd.startswith(gemini_dir) or proc_cwd == home or proc_cwd.startswith("/tmp"):
+    temp_dir = os.path.realpath(tempfile.gettempdir())
+    if (proc_cwd.startswith(gemini_dir) or proc_cwd == home
+            or proc_cwd == temp_dir or proc_cwd.startswith(temp_dir + os.sep)):
         if targets:
             for t in targets:
                 abs_t = os.path.realpath(t)

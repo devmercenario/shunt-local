@@ -53,6 +53,18 @@ labelled as such (see `SECURITY.md`).
 The guard itself is `hooks/shunt_guard.py` (cross-platform, Python 3); the bash
 scripts under `hooks/` are thin wrappers kept for compatibility.
 
+## Repository workflow
+
+- **The remote is the single source of truth.** `git pull` before starting work
+  and `git push` when done. Never treat a local checkout — especially an
+  *installed* copy of shunt-local — as authoritative.
+- **Separate development from installation.** Develop in this checkout and
+  install/test against a deliberate install location. Do not borrow code from a
+  local installation repo (e.g. a copy under `~/.local`, `~/bin`, or another
+  harness's plugin directory); if you suspect a drift, `git fetch origin && git diff origin/main`.
+- When the local tree disagrees with `origin/main`, reconcile against the remote
+  before making changes, and never hand-edit an installed copy to "fix" it here.
+
 ## Contributing
 
 - Run the full suite before committing: `bash evals/run.sh` (328 checks; a few
