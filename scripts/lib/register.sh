@@ -4,6 +4,34 @@
 # Keeping this in one place avoids the two scripts drifting apart (they used to
 # duplicate the bin/skill/hook registration verbatim).
 
+# Restore tracked build artifacts (compiled bytecode, caches) that were
+# regenerated at runtime. They are regenerated on demand, carry no information,
+# and would otherwise block a fast-forward pull with a "local changes" error.
+# Source files are never touched: only paths matching bytecode/cache patterns
+# are reset to their committed state.
+shunt_restore_stray_artifacts() {
+  local repo="$1"
+  [ -d "$repo/.git" ] || return 0
+  git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+  local file restored=0
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    case "$file" in
+      *.pyc|*.pyo|*/__pycache__/*|__pycache__/*)
+        if git -C "$repo" checkout -- "$file" 2>/dev/null; then
+          restored=$((restored + 1))
+        fi
+        ;;
+    esac
+  done < <(git -C "$repo" diff --name-only 2>/dev/null || true)
+
+  if [ "$restored" -gt 0 ]; then
+    echo "Restored $restored stray build artifact(s) before updating." >&2
+  fi
+  return 0
+}
+
 # Sync the install clone with origin/main before installing, so install.sh
 # always reflects the latest remote code. Non-git, offline, or locally-modified
 # sources fall back to the current files with a warning. Opt out with
@@ -37,6 +65,7 @@ shunt_sync_install_source() {
   case "$branch" in ""|"HEAD") branch=main ;; esac
 
   echo "Syncing install source with origin/${branch}..."
+  shunt_restore_stray_artifacts "$repo"
   if git -C "$repo" pull --ff-only --quiet origin "$branch" 2>/dev/null; then
     echo "Install source is up to date with origin/${branch}."
   else
