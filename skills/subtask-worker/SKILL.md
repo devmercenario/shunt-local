@@ -33,7 +33,7 @@ shunt-local exec --spec '{
 
 ## 🏛️ Architect Engineering Protocol: Investigation, Grill-Me & TDD
 
-As the **Cloud Architect Agent**, you operate at the level of a **Principal / Staff Software Architect**. You do NOT jump blindly into planning or code generation. You follow a rigorous, 5-phase engineering protocol:
+As the **Cloud Architect Agent**, you operate at the level of a **Principal / Staff Software Architect**. You do NOT jump blindly into planning or code generation. You follow a rigorous, six-phase engineering protocol:
 
 ### Phase 0: Codebase Pre-Investigation & The "Grill-Me" Alignment (Mandatory)
 Before proposing any plan or writing code, the Architect MUST conduct a deep pre-investigation followed by an architectural interview with the user:
@@ -53,6 +53,68 @@ Before proposing any plan or writing code, the Architect MUST conduct a deep pre
      * *Security & Boundaries*: "Should role validation happen at the middleware layer or inside the domain service?"
      * *Data Integrity & Rollback*: "If step 2 fails halfway, do we need a compensating transaction or soft-delete?"
    - **Outcome**: The user confirms the architectural decisions, constraints, and acceptance criteria before any planning begins.
+
+### Phase 0.5: The Change Manifest (Plan Before Execution)
+With the Phase 0 decisions sealed, the Architect MUST produce a **Change Manifest** — a complete, ordered specification of every change — *before* any file is written or any worker is dispatched. Every step answers **what, where, why, how**, states its acceptance criterion and blast radius, and records whether it will be delegated.
+
+Planning is deliberate; execution is mechanical. The manifest is the single artifact the developer approves and the source of truth that drives every `shunt-local exec` call.
+
+Three rules keep the manifest from becoming a liability:
+
+- **Altitude rule**: the manifest captures *decisions, contracts, and acceptance criteria* — never literal code. If you are writing the implementation line by line inside the manifest, you are spending the very cloud tokens you meant to save: keep design in the cloud and push implementation *volume* to the worker.
+- **Living-plan rule**: the manifest is a contract, not a frozen script. When a step reveals new facts (a type differs, a test fails for another reason, an API is missing), update the manifest and re-route — never execute a stale plan blindly.
+- **Atomic-step rule**: one manifest step = one delegatable unit with its own acceptance test. That is the granularity at which delegation routing happens.
+
+#### Manifest template
+
+```markdown
+# Change Manifest: <task title>
+
+## Decisions & Constraints
+- Sealed in Phase 0: <architectural decisions>
+- Acceptance criteria: <observable outcomes>
+- Global invariants: <e.g. no schema change, backwards compatible>
+
+## Steps
+
+### Step 01 — <name>
+- **What**:     <the change, one sentence>
+- **Where**:    <target file(s)>
+- **Why**:      <requirement / rationale>
+- **How**:      <approach; interfaces or schemas touched; key decisions>
+- **Contracts**: <interfaces/schemas introduced or consumed>
+- **Acceptance**: `<test command>` — <what it asserts>
+- **Delegation**: `local-worker` | `cloud-direct`
+- **Route rationale**: <why this step is (not) delegated>
+- **Rollback**: <how to undo this step>
+
+### Step 02 — <name>
+...
+
+## Delegation Routing Summary
+| Step | Nature | Route | Rationale |
+| :--- | :--- | :--- | :--- |
+| 01 | contract boilerplate | `local-worker` | mechanical, reference-driven |
+| 02 | schema migration | `local-worker` | verifiable by `--test-cmd` |
+| 03 | auth boundary logic | `cloud-direct` | security judgment, no test |
+```
+
+#### Delegation routing (decide per step, after planning)
+
+Route **to the local worker** when the step is:
+- mechanical or boilerplate, >80% predictable from a `--reference` file;
+- backed by a deterministic acceptance test (`--test-cmd`) so the worker can self-correct;
+- large enough to amortize the fixed orchestration overhead (rule of thumb: ≥ ~50 changed lines, or ≥ 2 target files).
+
+Keep **in the cloud** when the step is:
+- judgment-heavy (API design, naming, security boundaries) or loaded with conversational context from the Grill-Me;
+- tiny and surgical (a one-line fix, a typo, a config tweak) — delegating costs more than doing;
+- unverifiable because no test exists, so a weaker local model cannot self-correct;
+- sensitive enough that serializing its context to the worker costs more (or leaks more) than writing it directly.
+
+> **Read/write asymmetry.** Reads are *hard-gated* by size: a >350-line `view_file` is denied and forced through `bulk-read`, because the file's size is knowable in advance. Writes are not: the size of a change is not known before the change exists. Write delegation is therefore a deliberate per-step decision recorded in the manifest — not a wall.
+
+**Trust boundary**: the Architect's manifest is *trusted* (it is approved by the developer). The worker's output is *untrusted* and MUST be reviewed against the step's acceptance criterion before moving on.
 
 ### Phase 1: Contract-Driven Specification (Interface-First)
 With decisions sealed from Phase 0:

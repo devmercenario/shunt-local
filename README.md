@@ -25,7 +25,7 @@
   - [Clean Uninstall](#clean-uninstall)
 - [⚙️ Configuration](#configuration)
 - [🎛️ CLI & Management Commands](#cli-management-commands)
-- [🏛️ Architect Engineering Protocol](#architect-engineering-protocol-pre-investigation-grill-me-tdd)
+- [🏛️ Architect Engineering Protocol](#architect-engineering-protocol-pre-investigation-grill-me-manifest-and-tdd)
 - [🖥️ Recommended Local Models & Server Setup](#recommended-local-models-server-setup)
 - [🎯 Hands-On Examples](#hands-on-examples)
 - [🧪 Comprehensive Automated Test Suite](#comprehensive-automated-test-suite)
@@ -64,6 +64,7 @@ This establishes a true **Dual-Flow Hybrid Intelligence Pipeline**:
        │               Google Antigravity / Claude Code               │
        │                                                              │
        │  • Codebase Pre-Investigation & "Grill-Me" Alignment         │
+       │  • Change Manifest (What/Where/Why/How + Delegation Routing) │
        │  • Contract-Driven Design (Interfaces, Types, Schemas)       │
        │  • Strict TDD: Writes failing tests first (RED phase)        │
        └──────────────┬───────────────────────────────┬───────────────┘
@@ -161,6 +162,10 @@ sequenceDiagram
     Note over Architect,Dev: Phase 0: "Grill-Me" Alignment Interview
     Architect->>Dev: Questions trade-offs, security boundaries, edge cases & recommendations
     Dev-->>Architect: Confirms architectural decisions, contracts & constraints
+
+    Note over Architect,Dev: Phase 0.5: Change Manifest (What / Where / Why / How per step)
+    Architect->>Dev: Presents ordered manifest + per-step delegation routing
+    Dev-->>Architect: Approves the manifest (local-worker vs cloud-direct)
 
     Note over Architect,Disk: Phase 1 & Phase 2 (RED): Contracts & Tests First
     Architect->>Disk: Phase 1: Writes interface types, schemas & DTOs
@@ -385,15 +390,19 @@ shunt-local exec --spec '{
 
 ---
 
-## 🏛️ Architect Engineering Protocol: Pre-Investigation, Grill-Me & TDD
+## 🏛️ Architect Engineering Protocol: Pre-Investigation, Grill-Me, Manifest and TDD
 
-When pair-programming with `shunt-local`, the Cloud Model (Antigravity / Claude Code) operates at the level of a **Staff / Principal Software Architect**. Rather than jumping blindly into writing code, it follows a rigorous 5-phase engineering lifecycle:
+When pair-programming with `shunt-local`, the Cloud Model (Antigravity / Claude Code) operates at the level of a **Staff / Principal Software Architect**. Rather than jumping blindly into writing code, it follows a rigorous six-phase engineering lifecycle:
 
 ```mermaid
 flowchart TD
     subgraph P0["Phase 0: Pre-Investigation & Grill-Me Alignment"]
         A1["1. Codebase Audit<br/>(Conventions, DRY, Security, Perf, SRP)"] --> A2["2. Grill-Me Interview<br/>(Trade-offs, Edge Cases, Recommendations)"]
         A2 --> A3["3. Developer Alignment<br/>(Decisions & Constraints Confirmed)"]
+    end
+
+    subgraph P05["Phase 0.5: Change Manifest (Plan Before Execution)"]
+        A4["What / Where / Why / How per atomic step<br/>(+ acceptance test & blast radius)"] --> A5["Delegation Routing<br/>(local-worker vs cloud-direct, per step)"]
     end
 
     subgraph P1["Phase 1: Contract-Driven Specification"]
@@ -411,7 +420,8 @@ flowchart TD
         D2["Sequential Atomic Progression<br/>(Contracts → Tests → Service → Controller → E2E)"]
     end
 
-    P0 --> P1
+    P0 --> P05
+    P05 --> P1
     P1 --> P2
     P2 -.-> P3
 ```
@@ -431,6 +441,51 @@ Before writing any plan or code, the Architect conducts an autonomous audit and 
      * *Edge Cases & Failure Modes*: "How should the system behave when third-party provider X times out or returns 429?"
      * *Security & Boundaries*: "Should role validation happen at the middleware layer or inside the domain service?"
    - The developer resolves all open design decisions before any planning or code generation starts.
+
+### Phase 0.5: The Change Manifest (Plan Before Execution)
+With the Phase 0 decisions sealed, the Architect produces a **Change Manifest** — a complete, ordered specification of every change — *before* any file is written or worker dispatched. Each step states **what, where, why, how**, its acceptance test, and its blast radius. The manifest is the single artifact the developer approves and the source of truth that drives every `shunt-local exec` call.
+
+- **Altitude**: capture decisions, contracts, and acceptance criteria — never literal code. Design stays in the cloud; implementation *volume* goes to the worker.
+- **Living plan**: revise the manifest when a step reveals new facts; never execute a stale plan blindly.
+- **Atomic steps**: one step = one delegatable unit with its own acceptance test — the granularity at which routing happens.
+
+```markdown
+# Change Manifest: <task title>
+
+## Decisions & Constraints
+- Sealed in Phase 0: <architectural decisions>
+- Acceptance criteria: <observable outcomes>
+
+## Steps
+
+### Step 01 — <name>
+- **What**:     <the change, one sentence>
+- **Where**:    <target file(s)>
+- **Why**:      <requirement / rationale>
+- **How**:      <approach; interfaces or schemas touched; key decisions>
+- **Contracts**: <interfaces/schemas introduced or consumed>
+- **Acceptance**: `<test command>` — <what it asserts>
+- **Delegation**: `local-worker` | `cloud-direct`
+- **Route rationale**: <why this step is (not) delegated>
+- **Rollback**: <how to undo this step>
+
+## Delegation Routing Summary
+| Step | Nature | Route | Rationale |
+| :--- | :--- | :--- | :--- |
+| 01 | contract boilerplate | `local-worker` | mechanical, reference-driven |
+| 02 | auth boundary logic | `cloud-direct` | security judgment, no test |
+```
+
+**Delegation routing (per step)**:
+
+| Route | When to use it |
+| :--- | :--- |
+| `local-worker` | Mechanical/boilerplate, >80% predictable from a `--reference`, backed by a deterministic `--test-cmd`, and large enough to amortize overhead (≥ ~50 changed lines or ≥ 2 files). |
+| `cloud-direct` | Judgment-heavy (API design, security boundaries), tiny/surgical edits (one-line fix, typo, config tweak), unverifiable (no test to self-correct against), or context that costs more to serialize than to write. |
+
+> **Read/write asymmetry.** Reads are *hard-gated* by size (a >350-line read is denied and forced through `bulk-read`) because file size is knowable in advance. Writes are not — the size of a change is unknown before it exists — so write delegation is a deliberate, per-step decision recorded in the manifest, not a wall.
+
+The Architect's manifest is **trusted** (approved by the developer); the worker's output is **untrusted** and must be reviewed against each step's acceptance criterion.
 
 ### Phase 1: Contract-Driven Specification (Interface-First)
 - Establish canonical contracts first: TypeScript interfaces, Pydantic models, SQL schemas, or DTOs.
