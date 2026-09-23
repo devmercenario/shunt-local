@@ -13,6 +13,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Cache the sandbox backend selection per process; validate `install.ps1` in CI;
   add a shallow harness e2e smoke (`evals/harness-e2e.sh`).
 
+### Fixed
+- Stop tracking compiled bytecode (`paths.cpython-314.pyc`), which dirtied the
+  working tree on every hook run and blocked fast-forward updates; add a
+  packaging eval so bytecode can never be committed again.
+- Restore stray tracked build artifacts (`*.pyc`/`__pycache__`) before pulling in
+  `shunt-update` and in `install.sh`'s sync step, so a regenerated cache can no
+  longer block an update.
+
 ## [0.2.0] - 2026-09-22
 
 ### Security

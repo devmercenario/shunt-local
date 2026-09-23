@@ -57,6 +57,16 @@ check "architecture-doc" "yes" \
 versions=$(for f in "$PLUGIN_DIR/plugin.json" "$PLUGIN_DIR/.claude-plugin/plugin.json" "$PLUGIN_DIR/.codex-plugin/plugin.json" "$PLUGIN_DIR/plugins/opencode/package.json"; do jq -r '.version // empty' "$f"; done | sort -u | wc -l | tr -d ' ')
 check "version-consistency" "1" "$versions" "all manifests share one version"
 
+# Compiled bytecode and cache directories must never be tracked: they are
+# regenerated at runtime, dirty the working tree, and block fast-forward
+# updates (see shunt_restore_stray_artifacts).
+if git -C "$PLUGIN_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  tracked_bytecode=$(git -C "$PLUGIN_DIR" ls-files | grep -cE '(^|/)__pycache__/|[.]py[co]$' || true)
+else
+  tracked_bytecode=0
+fi
+check "no-tracked-bytecode" "0" "$tracked_bytecode" "no .pyc/__pycache__ files tracked in git"
+
 echo ""
 echo "## $PASSED $FAILED"
 echo "Results: $PASSED passed, $FAILED failed"

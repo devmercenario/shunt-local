@@ -91,6 +91,7 @@ if [ "$DO_PULL" = true ] && [ -d "$REPO_DIR/.git" ]; then
           fi
         fi
         if [ "$DO_APPLY" = "true" ]; then
+          shunt_restore_stray_artifacts "$REPO_DIR"
           git -C "$REPO_DIR" pull --ff-only origin "$current_branch" || echo "Warning: git pull was not fast-forwarded or local changes exist. Continuing with current repository files."
         else
           echo ""
